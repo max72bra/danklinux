@@ -3,17 +3,21 @@ package network
 import (
 	"testing"
 
+	mock_gonetworkmanager "github.com/AvengeMedia/danklinux/internal/mocks/github.com/Wifx/gonetworkmanager/v2"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestNetworkManagerBackend_GetWiFiEnabled(t *testing.T) {
-	backend, err := NewNetworkManagerBackend()
-	if err != nil {
-		t.Skipf("NetworkManager not available: %v", err)
-	}
+	mockNM := mock_gonetworkmanager.NewMockNetworkManager(t)
 
-	_, err = backend.GetWiFiEnabled()
+	backend, err := NewNetworkManagerBackend(mockNM)
 	assert.NoError(t, err)
+
+	mockNM.EXPECT().GetPropertyWirelessEnabled().Return(true, nil)
+
+	enabled, err := backend.GetWiFiEnabled()
+	assert.NoError(t, err)
+	assert.True(t, enabled)
 }
 
 func TestNetworkManagerBackend_SetWiFiEnabled(t *testing.T) {

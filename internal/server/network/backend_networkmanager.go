@@ -55,10 +55,19 @@ type NetworkManagerBackend struct {
 	onStateChange func()
 }
 
-func NewNetworkManagerBackend() (*NetworkManagerBackend, error) {
-	nm, err := gonetworkmanager.NewNetworkManager()
-	if err != nil {
-		return nil, fmt.Errorf("failed to connect to NetworkManager: %w", err)
+func NewNetworkManagerBackend(nmConn ...gonetworkmanager.NetworkManager) (*NetworkManagerBackend, error) {
+	var nm gonetworkmanager.NetworkManager
+	var err error
+
+	if len(nmConn) > 0 && nmConn[0] != nil {
+		// Use injected connection (for testing)
+		nm = nmConn[0]
+	} else {
+		// Create real connection
+		nm, err = gonetworkmanager.NewNetworkManager()
+		if err != nil {
+			return nil, fmt.Errorf("failed to connect to NetworkManager: %w", err)
+		}
 	}
 
 	backend := &NetworkManagerBackend{
