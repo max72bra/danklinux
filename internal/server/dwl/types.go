@@ -45,9 +45,11 @@ type Manager struct {
 	tagCount uint32
 	layouts  []string
 
-	cmdq     chan cmd
-	stopChan chan struct{}
-	wg       sync.WaitGroup
+	wlMutex        sync.Mutex
+	cmdq           chan cmd
+	outputSetupReq chan uint32
+	stopChan       chan struct{}
+	wg             sync.WaitGroup
 
 	subscribers  map[string]chan State
 	subMutex     sync.RWMutex

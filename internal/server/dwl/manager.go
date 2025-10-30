@@ -6,29 +6,23 @@ import (
 
 	wlclient "github.com/yaslama/go-wayland/wayland/client"
 
-	"github.com/AvengeMedia/danklinux/internal/errdefs"
 	"github.com/AvengeMedia/danklinux/internal/log"
 	"github.com/AvengeMedia/danklinux/internal/proto/dwl_ipc"
 )
 
-func NewManager() (*Manager, error) {
-	display, err := wlclient.Connect("")
-	if err != nil {
-		return nil, fmt.Errorf("%w: %v", errdefs.ErrNoWaylandDisplay, err)
-	}
-
+func NewManager(display *wlclient.Display) (*Manager, error) {
 	m := &Manager{
-		display:     display,
-		outputs:     make(map[uint32]*outputState),
-		cmdq:        make(chan cmd, 128),
-		stopChan:    make(chan struct{}),
-		subscribers: make(map[string]chan State),
-		dirty:       make(chan struct{}, 1),
-		layouts:     make([]string, 0),
+		display:        display,
+		outputs:        make(map[uint32]*outputState),
+		cmdq:           make(chan cmd, 128),
+		outputSetupReq: make(chan uint32, 16),
+		stopChan:       make(chan struct{}),
+		subscribers:    make(map[string]chan State),
+		dirty:          make(chan struct{}, 1),
+		layouts:        make([]string, 0),
 	}
 
 	if err := m.setupRegistry(); err != nil {
-		display.Context().Close()
 		return nil, err
 	}
 
@@ -39,9 +33,6 @@ func NewManager() (*Manager, error) {
 
 	m.wg.Add(1)
 	go m.waylandActor()
-
-	m.wg.Add(1)
-	go m.eventDispatcher()
 
 	return m, nil
 }
@@ -63,22 +54,31 @@ func (m *Manager) waylandActor() {
 			return
 		case c := <-m.cmdq:
 			c.fn()
-		}
-	}
-}
+		case outputID := <-m.outputSetupReq:
+			m.outputsMutex.RLock()
+			out, exists := m.outputs[outputID]
+			m.outputsMutex.RUnlock()
 
-func (m *Manager) eventDispatcher() {
-	defer m.wg.Done()
-	ctx := m.display.Context()
+			if !exists {
+				log.Warnf("DWL: Output %d no longer exists, skipping setup", outputID)
+				continue
+			}
 
-	for {
-		select {
-		case <-m.stopChan:
-			return
-		default:
-			if err := ctx.Dispatch(); err != nil {
-				log.Errorf("DWL Wayland connection error: %v", err)
-				return
+			if out.ipcOutput != nil {
+				continue
+			}
+
+			mgr, ok := m.manager.(*dwl_ipc.ZdwlIpcManagerV2)
+			if !ok || mgr == nil {
+				log.Errorf("DWL: Manager not available for output %d setup", outputID)
+				continue
+			}
+
+			log.Infof("DWL: Setting up ipcOutput for dynamically added output %d", outputID)
+			if err := m.setupOutput(mgr, out.output); err != nil {
+				log.Errorf("DWL: Failed to setup output %d: %v", outputID, err)
+			} else {
+				m.updateState()
 			}
 		}
 	}
@@ -146,6 +146,15 @@ func (m *Manager) setupRegistry() error {
 				m.outputsMutex.Lock()
 				m.outputs[outputID] = outState
 				m.outputsMutex.Unlock()
+
+				if m.manager != nil {
+					select {
+					case m.outputSetupReq <- outputID:
+						log.Debugf("DWL: Queued setup for output %d", outputID)
+					default:
+						log.Warnf("DWL: Setup queue full, output %d will not be initialized", outputID)
+					}
+				}
 			} else {
 				log.Errorf("DWL: Failed to bind wl_output: %v", err)
 			}
@@ -155,15 +164,25 @@ func (m *Manager) setupRegistry() error {
 	registry.SetGlobalRemoveHandler(func(e wlclient.RegistryGlobalRemoveEvent) {
 		m.post(func() {
 			m.outputsMutex.Lock()
-			defer m.outputsMutex.Unlock()
-
+			var outToRelease *outputState
 			for id, out := range m.outputs {
 				if out.registryName == e.Name {
 					log.Infof("DWL: Output %d removed", id)
+					outToRelease = out
 					delete(m.outputs, id)
-					m.updateState()
-					return
+					break
 				}
+			}
+			m.outputsMutex.Unlock()
+
+			if outToRelease != nil {
+				if ipcOut, ok := outToRelease.ipcOutput.(*dwl_ipc.ZdwlIpcOutputV2); ok && ipcOut != nil {
+					m.wlMutex.Lock()
+					ipcOut.Release()
+					m.wlMutex.Unlock()
+					log.Debugf("DWL: Released ipcOutput for removed output %d", outToRelease.id)
+				}
+				m.updateState()
 			}
 		})
 	})
@@ -176,7 +195,7 @@ func (m *Manager) setupRegistry() error {
 	}
 
 	if dwlMgr == nil {
-		log.Error("DWL: manager not found in registry")
+		log.Info("DWL: manager not found in registry")
 		return fmt.Errorf("dwl_ipc_manager_v2 not available")
 	}
 
@@ -195,7 +214,7 @@ func (m *Manager) setupRegistry() error {
 	m.manager = dwlMgr
 
 	for _, output := range outputs {
-		if err := m.setupOutput(dwlMgr, output, outputRegNames[output.ID()]); err != nil {
+		if err := m.setupOutput(dwlMgr, output); err != nil {
 			log.Warnf("DWL: Failed to setup output %d: %v", output.ID(), err)
 		}
 	}
@@ -208,8 +227,10 @@ func (m *Manager) setupRegistry() error {
 	return nil
 }
 
-func (m *Manager) setupOutput(manager *dwl_ipc.ZdwlIpcManagerV2, output *wlclient.Output, regName uint32) error {
+func (m *Manager) setupOutput(manager *dwl_ipc.ZdwlIpcManagerV2, output *wlclient.Output) error {
+	m.wlMutex.Lock()
 	ipcOutput, err := manager.GetOutput(output)
+	m.wlMutex.Unlock()
 	if err != nil {
 		return fmt.Errorf("failed to get dwl output: %w", err)
 	}
@@ -374,11 +395,19 @@ func (m *Manager) notifier() {
 	}
 }
 
+func (m *Manager) ensureOutputSetup(out *outputState) error {
+	if out.ipcOutput != nil {
+		return nil
+	}
+
+	return fmt.Errorf("output not yet initialized - setup in progress, retry in a moment")
+}
+
 func (m *Manager) SetTags(outputName string, tagmask uint32, toggleTagset uint32) error {
 	m.outputsMutex.RLock()
-	defer m.outputsMutex.RUnlock()
 
 	availableOutputs := make([]string, 0, len(m.outputs))
+	var targetOut *outputState
 	for _, out := range m.outputs {
 		name := out.name
 		if name == "" {
@@ -386,48 +415,99 @@ func (m *Manager) SetTags(outputName string, tagmask uint32, toggleTagset uint32
 		}
 		availableOutputs = append(availableOutputs, name)
 		if name == outputName {
-			ipcOut := out.ipcOutput.(*dwl_ipc.ZdwlIpcOutputV2)
-			return ipcOut.SetTags(tagmask, toggleTagset)
+			targetOut = out
+			break
 		}
 	}
+	m.outputsMutex.RUnlock()
 
-	return fmt.Errorf("output not found: %s (available: %v)", outputName, availableOutputs)
+	if targetOut == nil {
+		return fmt.Errorf("output not found: %s (available: %v)", outputName, availableOutputs)
+	}
+
+	if err := m.ensureOutputSetup(targetOut); err != nil {
+		return fmt.Errorf("failed to setup output %s: %w", outputName, err)
+	}
+
+	ipcOut, ok := targetOut.ipcOutput.(*dwl_ipc.ZdwlIpcOutputV2)
+	if !ok {
+		return fmt.Errorf("output %s has invalid ipcOutput type", outputName)
+	}
+
+	m.wlMutex.Lock()
+	err := ipcOut.SetTags(tagmask, toggleTagset)
+	m.wlMutex.Unlock()
+	return err
 }
 
 func (m *Manager) SetClientTags(outputName string, andTags uint32, xorTags uint32) error {
 	m.outputsMutex.RLock()
-	defer m.outputsMutex.RUnlock()
 
+	var targetOut *outputState
 	for _, out := range m.outputs {
 		name := out.name
 		if name == "" {
 			name = fmt.Sprintf("output-%d", out.id)
 		}
 		if name == outputName {
-			ipcOut := out.ipcOutput.(*dwl_ipc.ZdwlIpcOutputV2)
-			return ipcOut.SetClientTags(andTags, xorTags)
+			targetOut = out
+			break
 		}
 	}
+	m.outputsMutex.RUnlock()
 
-	return fmt.Errorf("output not found: %s", outputName)
+	if targetOut == nil {
+		return fmt.Errorf("output not found: %s", outputName)
+	}
+
+	if err := m.ensureOutputSetup(targetOut); err != nil {
+		return fmt.Errorf("failed to setup output %s: %w", outputName, err)
+	}
+
+	ipcOut, ok := targetOut.ipcOutput.(*dwl_ipc.ZdwlIpcOutputV2)
+	if !ok {
+		return fmt.Errorf("output %s has invalid ipcOutput type", outputName)
+	}
+
+	m.wlMutex.Lock()
+	err := ipcOut.SetClientTags(andTags, xorTags)
+	m.wlMutex.Unlock()
+	return err
 }
 
 func (m *Manager) SetLayout(outputName string, index uint32) error {
 	m.outputsMutex.RLock()
-	defer m.outputsMutex.RUnlock()
 
+	var targetOut *outputState
 	for _, out := range m.outputs {
 		name := out.name
 		if name == "" {
 			name = fmt.Sprintf("output-%d", out.id)
 		}
 		if name == outputName {
-			ipcOut := out.ipcOutput.(*dwl_ipc.ZdwlIpcOutputV2)
-			return ipcOut.SetLayout(index)
+			targetOut = out
+			break
 		}
 	}
+	m.outputsMutex.RUnlock()
 
-	return fmt.Errorf("output not found: %s", outputName)
+	if targetOut == nil {
+		return fmt.Errorf("output not found: %s", outputName)
+	}
+
+	if err := m.ensureOutputSetup(targetOut); err != nil {
+		return fmt.Errorf("failed to setup output %s: %w", outputName, err)
+	}
+
+	ipcOut, ok := targetOut.ipcOutput.(*dwl_ipc.ZdwlIpcOutputV2)
+	if !ok {
+		return fmt.Errorf("output %s has invalid ipcOutput type", outputName)
+	}
+
+	m.wlMutex.Lock()
+	err := ipcOut.SetLayout(index)
+	m.wlMutex.Unlock()
+	return err
 }
 
 func (m *Manager) Close() {
@@ -453,9 +533,5 @@ func (m *Manager) Close() {
 
 	if mgr, ok := m.manager.(*dwl_ipc.ZdwlIpcManagerV2); ok {
 		mgr.Release()
-	}
-
-	if m.display != nil {
-		m.display.Context().Close()
 	}
 }

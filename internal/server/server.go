@@ -20,6 +20,7 @@ import (
 	"github.com/AvengeMedia/danklinux/internal/server/models"
 	"github.com/AvengeMedia/danklinux/internal/server/network"
 	"github.com/AvengeMedia/danklinux/internal/server/wayland"
+	"github.com/AvengeMedia/danklinux/internal/server/wlcontext"
 )
 
 const APIVersion = 12
@@ -44,6 +45,7 @@ var freedesktopManager *freedesktop.Manager
 var waylandManager *wayland.Manager
 var bluezManager *bluez.Manager
 var dwlManager *dwl.Manager
+var wlContext *wlcontext.SharedContext
 
 func getSocketDir() string {
 	if runtime := os.Getenv("XDG_RUNTIME_DIR"); runtime != "" {
@@ -141,8 +143,18 @@ func InitializeFreedeskManager() error {
 
 func InitializeWaylandManager() error {
 	log.Info("Attempting to initialize Wayland gamma control...")
+
+	if wlContext == nil {
+		ctx, err := wlcontext.New()
+		if err != nil {
+			log.Errorf("Failed to create shared Wayland context: %v", err)
+			return err
+		}
+		wlContext = ctx
+	}
+
 	config := wayland.DefaultConfig()
-	manager, err := wayland.NewManager(config)
+	manager, err := wayland.NewManager(wlContext.Display(), config)
 	if err != nil {
 		log.Errorf("Failed to initialize wayland manager: %v", err)
 		return err
@@ -169,9 +181,19 @@ func InitializeBluezManager() error {
 
 func InitializeDwlManager() error {
 	log.Info("Attempting to initialize DWL IPC...")
-	manager, err := dwl.NewManager()
+
+	if wlContext == nil {
+		ctx, err := wlcontext.New()
+		if err != nil {
+			log.Errorf("Failed to create shared Wayland context: %v", err)
+			return err
+		}
+		wlContext = ctx
+	}
+
+	manager, err := dwl.NewManager(wlContext.Display())
 	if err != nil {
-		log.Errorf("Failed to initialize dwl manager: %v", err)
+		log.Debug("Failed to initialize dwl manager: %v", err)
 		return err
 	}
 
@@ -561,6 +583,9 @@ func cleanupManagers() {
 	if dwlManager != nil {
 		dwlManager.Close()
 	}
+	if wlContext != nil {
+		wlContext.Close()
+	}
 }
 
 func Start(printDocs bool) error {
@@ -605,7 +630,12 @@ func Start(printDocs bool) error {
 	}()
 
 	if err := InitializeDwlManager(); err != nil {
-		log.Warnf("DWL manager unavailable: %v", err)
+		log.Debugf("DWL manager unavailable: %v", err)
+	}
+
+	if wlContext != nil {
+		wlContext.Start()
+		log.Info("Wayland event dispatcher started")
 	}
 
 	log.Infof("DMS API Server listening on: %s", socketPath)

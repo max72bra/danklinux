@@ -17,14 +17,9 @@ import (
 	"github.com/AvengeMedia/danklinux/internal/proto/wlr_gamma_control"
 )
 
-func NewManager(config Config) (*Manager, error) {
+func NewManager(display *wlclient.Display, config Config) (*Manager, error) {
 	if err := config.Validate(); err != nil {
 		return nil, err
-	}
-
-	display, err := wlclient.Connect("")
-	if err != nil {
-		return nil, fmt.Errorf("%w: %v", errdefs.ErrNoWaylandDisplay, err)
 	}
 
 	m := &Manager{
@@ -40,7 +35,6 @@ func NewManager(config Config) (*Manager, error) {
 	}
 
 	if err := m.setupRegistry(); err != nil {
-		display.Context().Close()
 		return nil, err
 	}
 
@@ -74,9 +68,6 @@ func NewManager(config Config) (*Manager, error) {
 
 	m.wg.Add(1)
 	go m.waylandActor()
-
-	m.wg.Add(1)
-	go m.eventDispatcher()
 
 	if config.Enabled {
 		m.post(func() {
@@ -114,24 +105,6 @@ func (m *Manager) waylandActor() {
 	}
 }
 
-func (m *Manager) eventDispatcher() {
-	defer m.wg.Done()
-	ctx := m.display.Context()
-
-	for {
-		select {
-		case <-m.stopChan:
-			return
-		default:
-			if err := ctx.Dispatch(); err != nil {
-				log.Errorf("Wayland connection error: %v", err)
-				m.handleDisconnect(err)
-				return
-			}
-		}
-	}
-}
-
 func (m *Manager) allOutputsReady() bool {
 	m.outputsMutex.RLock()
 	defer m.outputsMutex.RUnlock()
@@ -144,63 +117,6 @@ func (m *Manager) allOutputsReady() bool {
 		}
 	}
 	return true
-}
-
-func (m *Manager) handleDisconnect(err error) {
-	log.Warnf("Wayland disconnected: %v, attempting reconnect...", err)
-	m.alive = false
-
-	m.outputs = make(map[uint32]*outputState)
-	m.controlsInitialized = false
-
-	backoff := time.Second
-	for {
-		select {
-		case <-m.stopChan:
-			return
-		default:
-		}
-
-		display, derr := wlclient.Connect("")
-		if derr == nil {
-			m.display = display
-			break
-		}
-		log.Warnf("Reconnect failed: %v, retrying in %v", derr, backoff)
-		time.Sleep(backoff)
-		if backoff < 8*time.Second {
-			backoff *= 2
-		}
-	}
-
-	if err := m.setupRegistry(); err != nil {
-		log.Errorf("Failed to setup registry after reconnect: %v", err)
-		// Restart only the dispatcher, not the actor
-		m.wg.Add(1)
-		go m.eventDispatcher()
-		return
-	}
-
-	m.configMutex.RLock()
-	enabled := m.config.Enabled
-	m.configMutex.RUnlock()
-
-	if enabled {
-		gammaMgr := m.gammaControl.(*wlr_gamma_control.ZwlrGammaControlManagerV1)
-		if err := m.setupOutputControls(m.availableOutputs, gammaMgr, true); err == nil {
-			m.controlsInitialized = true
-			m.transitionMutex.RLock()
-			temp := m.targetTemp
-			m.transitionMutex.RUnlock()
-			m.applyNowOnActor(temp)
-		}
-	}
-
-	m.alive = true
-	log.Info("Wayland reconnected successfully")
-	// Restart only the dispatcher, actor is still running
-	m.wg.Add(1)
-	go m.eventDispatcher()
 }
 
 func (m *Manager) setupDBusMonitor() error {
@@ -1358,10 +1274,6 @@ func (m *Manager) Close() {
 	if m.dbusConn != nil {
 		m.dbusConn.RemoveSignal(m.dbusSignal)
 		m.dbusConn.Close()
-	}
-
-	if m.display != nil {
-		m.display.Context().Close()
 	}
 }
 
