@@ -236,6 +236,7 @@ func (m *Manager) setupRegistry() error {
 
 	outputs := make([]*wlclient.Output, 0)
 	outputRegNames := make(map[uint32]uint32)
+	outputNames := make(map[uint32]string)
 	var gammaMgr *wlr_gamma_control.ZwlrGammaControlManagerV1
 
 	registry.SetGlobalHandler(func(e wlclient.RegistryGlobalEvent) {
@@ -263,6 +264,15 @@ func (m *Manager) setupRegistry() error {
 			if err := registry.Bind(e.Name, e.Interface, version, output); err == nil {
 				outputID := output.ID()
 				log.Infof("Bound wl_output id=%d registry_name=%d", outputID, e.Name)
+
+				output.SetNameHandler(func(ev wlclient.OutputNameEvent) {
+					log.Infof("Output %d name: %s", outputID, ev.Name)
+					outputNames[outputID] = ev.Name
+					isVirtual := len(ev.Name) >= 9 && ev.Name[:9] == "HEADLESS-"
+					if isVirtual {
+						log.Infof("Output %d identified as virtual", outputID)
+					}
+				})
 
 				if gammaMgr != nil {
 					outputs = append(outputs, output)
@@ -346,8 +356,21 @@ func (m *Manager) setupRegistry() error {
 		return fmt.Errorf("no outputs available")
 	}
 
+	physicalOutputs := make([]*wlclient.Output, 0)
+	for _, output := range outputs {
+		outputID := output.ID()
+		name := outputNames[outputID]
+		if name != "" && (len(name) >= 9 && name[:9] == "HEADLESS-") {
+			log.Infof("Skipping virtual output %d (name=%s) for gamma control", outputID, name)
+			continue
+		}
+		physicalOutputs = append(physicalOutputs, output)
+	}
+
+	log.Infof("setupRegistry: filtered %d physical outputs from %d total outputs", len(physicalOutputs), len(outputs))
+
 	m.gammaControl = gammaMgr
-	m.availableOutputs = outputs
+	m.availableOutputs = physicalOutputs
 	m.outputRegNames = outputRegNames
 
 	log.Info("setupRegistry: completed successfully (gamma controls will be initialized when enabled)")
@@ -371,6 +394,7 @@ func (m *Manager) setupOutputControls(outputs []*wlclient.Output, manager *wlr_g
 			registryName: m.outputRegNames[output.ID()],
 			output:       output,
 			gammaControl: control,
+			isVirtual:    false,
 		}
 
 		func(state *outputState) {
@@ -445,6 +469,33 @@ func (m *Manager) setupOutputControls(outputs []*wlclient.Output, manager *wlr_g
 }
 
 func (m *Manager) addOutputControl(output *wlclient.Output) error {
+	outputID := output.ID()
+
+	outputName := ""
+	nameReceived := make(chan string, 1)
+	output.SetNameHandler(func(ev wlclient.OutputNameEvent) {
+		select {
+		case nameReceived <- ev.Name:
+		default:
+		}
+		outputName = ev.Name
+	})
+
+	if err := m.display.Roundtrip(); err != nil {
+		return fmt.Errorf("roundtrip to get output name: %w", err)
+	}
+
+	select {
+	case name := <-nameReceived:
+		outputName = name
+	default:
+	}
+
+	if outputName != "" && len(outputName) >= 9 && outputName[:9] == "HEADLESS-" {
+		log.Infof("Skipping virtual output %d (name=%s) for gamma control", outputID, outputName)
+		return nil
+	}
+
 	gammaMgr := m.gammaControl.(*wlr_gamma_control.ZwlrGammaControlManagerV1)
 
 	control, err := gammaMgr.GetGammaControl(output)
@@ -453,10 +504,12 @@ func (m *Manager) addOutputControl(output *wlclient.Output) error {
 	}
 
 	outState := &outputState{
-		id:           output.ID(),
-		registryName: m.outputRegNames[output.ID()],
+		id:           outputID,
+		name:         outputName,
+		registryName: m.outputRegNames[outputID],
 		output:       output,
 		gammaControl: control,
+		isVirtual:    false,
 	}
 
 	control.SetGammaSizeHandler(func(e wlr_gamma_control.ZwlrGammaControlV1GammaSizeEvent) {
@@ -664,6 +717,11 @@ func (m *Manager) recreateOutputControl(out *outputState) error {
 
 	if !exists {
 		log.Debugf("Output %d no longer exists, skipping recreation", out.id)
+		return nil
+	}
+
+	if out.isVirtual {
+		log.Debugf("Output %d is virtual, skipping recreation", out.id)
 		return nil
 	}
 

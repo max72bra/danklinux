@@ -89,6 +89,7 @@ type outputState struct {
 	gammaControl interface{}
 	rampSize     uint32
 	failed       bool
+	isVirtual    bool
 }
 
 type SunTimes struct {
