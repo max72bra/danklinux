@@ -202,12 +202,12 @@ func (d *DebianDistribution) InstallPrerequisites(ctx context.Context, sudoPassw
 		Step:        "Installing development dependencies...",
 		IsComplete:  false,
 		NeedsSudo:   true,
-		CommandInfo: "sudo apt-get install -y curl wget git cmake ninja-build pkg-config libxcb-cursor-dev",
+		CommandInfo: "sudo apt-get install -y curl wget git cmake ninja-build pkg-config libxcb-cursor-dev libglib2.0-dev libpolkit-agent-1-dev",
 		LogOutput:   "Installing additional development tools",
 	}
 
 	devToolsCmd := exec.CommandContext(ctx, "bash", "-c",
-		fmt.Sprintf("echo '%s' | sudo -S apt-get install -y curl wget git cmake ninja-build pkg-config libxcb-cursor-dev", sudoPassword))
+		fmt.Sprintf("echo '%s' | sudo -S apt-get install -y curl wget git cmake ninja-build pkg-config libxcb-cursor-dev libglib2.0-dev libpolkit-agent-1-dev", sudoPassword))
 	if err := d.runWithProgress(devToolsCmd, progressChan, PhasePrerequisites, 0.10, 0.12); err != nil {
 		return fmt.Errorf("failed to install development tools: %w", err)
 	}

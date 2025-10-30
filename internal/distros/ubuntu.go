@@ -227,12 +227,12 @@ func (u *UbuntuDistribution) InstallPrerequisites(ctx context.Context, sudoPassw
 		Step:        "Installing development dependencies...",
 		IsComplete:  false,
 		NeedsSudo:   true,
-		CommandInfo: "sudo apt-get install -y curl wget git cmake ninja-build pkg-config",
+		CommandInfo: "sudo apt-get install -y curl wget git cmake ninja-build pkg-config libglib2.0-dev libpolkit-agent-1-dev",
 		LogOutput:   "Installing additional development tools",
 	}
 
 	devToolsCmd := exec.CommandContext(ctx, "bash", "-c",
-		fmt.Sprintf("echo '%s' | sudo -S apt-get install -y curl wget git cmake ninja-build pkg-config", sudoPassword))
+		fmt.Sprintf("echo '%s' | sudo -S apt-get install -y curl wget git cmake ninja-build pkg-config libglib2.0-dev libpolkit-agent-1-dev", sudoPassword))
 	if err := u.runWithProgress(devToolsCmd, progressChan, PhasePrerequisites, 0.10, 0.12); err != nil {
 		return fmt.Errorf("failed to install development tools: %w", err)
 	}

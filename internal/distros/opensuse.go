@@ -217,6 +217,8 @@ func (o *OpenSUSEDistribution) getPrerequisites() []string {
 		"wayland-utils",
 		"Mesa-libGLESv3-devel",
 		"pam-devel",
+		"glib2-devel",
+		"polkit-devel",
 	}
 }
 
