@@ -73,7 +73,10 @@ func NewManager(display *wlclient.Display, config Config) (*Manager, error) {
 		m.post(func() {
 			log.Info("Gamma control enabled at startup, initializing controls")
 			gammaMgr := m.gammaControl.(*wlr_gamma_control.ZwlrGammaControlManagerV1)
-			if err := m.setupOutputControls(m.availableOutputs, gammaMgr, true); err != nil {
+			if err := func() error {
+				var outputs []*wlclient.Output = m.availableOutputs
+				return m.setupOutputControls(outputs, gammaMgr)
+			}(); err != nil {
 				log.Errorf("Failed to initialize gamma controls: %v", err)
 			} else {
 				m.controlsInitialized = true
@@ -148,7 +151,6 @@ func (m *Manager) setupRegistry() error {
 		return fmt.Errorf("failed to get registry: %w", err)
 	}
 	m.registry = registry
-	log.Debug("setupRegistry: registry obtained")
 
 	outputs := make([]*wlclient.Output, 0)
 	outputRegNames := make(map[uint32]uint32)
@@ -252,7 +254,6 @@ func (m *Manager) setupRegistry() error {
 		})
 	})
 
-	log.Debug("setupRegistry: performing roundtrips")
 	if err := m.display.Roundtrip(); err != nil {
 		return fmt.Errorf("first roundtrip failed: %w", err)
 	}
@@ -293,17 +294,15 @@ func (m *Manager) setupRegistry() error {
 	return nil
 }
 
-func (m *Manager) setupOutputControls(outputs []*wlclient.Output, manager *wlr_gamma_control.ZwlrGammaControlManagerV1, doRoundtrip bool) error {
+func (m *Manager) setupOutputControls(outputs []*wlclient.Output, manager *wlr_gamma_control.ZwlrGammaControlManagerV1) error {
 	log.Infof("setupOutputControls: creating gamma controls for %d outputs", len(outputs))
 
-	for i, output := range outputs {
-		log.Debugf("setupOutputControls: Loop iteration %d, getting gamma control for output %d", i, output.ID())
+	for _, output := range outputs {
 		control, err := manager.GetGammaControl(output)
 		if err != nil {
 			log.Warnf("Failed to get gamma control for output %d: %v", output.ID(), err)
 			continue
 		}
-		log.Debugf("setupOutputControls: Successfully got control for output %d", output.ID())
 
 		outState := &outputState{
 			id:           output.ID(),
@@ -315,9 +314,14 @@ func (m *Manager) setupOutputControls(outputs []*wlclient.Output, manager *wlr_g
 
 		func(state *outputState) {
 			control.SetGammaSizeHandler(func(e wlr_gamma_control.ZwlrGammaControlV1GammaSizeEvent) {
-				state.rampSize = e.Size
-				state.failed = false
-				log.Infof("Output %d gamma_size=%d", state.id, e.Size)
+				m.outputsMutex.Lock()
+				if outState, exists := m.outputs[state.id]; exists {
+					outState.rampSize = e.Size
+					outState.failed = false
+					outState.retryCount = 0
+					log.Infof("Output %d gamma_size=%d", state.id, e.Size)
+				}
+				m.outputsMutex.Unlock()
 
 				m.transitionMutex.RLock()
 				currentTemp := m.currentTemp
@@ -329,56 +333,33 @@ func (m *Manager) setupOutputControls(outputs []*wlclient.Output, manager *wlr_g
 			})
 
 			control.SetFailedHandler(func(e wlr_gamma_control.ZwlrGammaControlV1FailedEvent) {
-				log.Errorf("Gamma control FAILED for output %d - marking for recreation", state.id)
 				m.outputsMutex.Lock()
-				if out, exists := m.outputs[state.id]; exists {
-					out.failed = true
-					out.rampSize = 0
+				if outState, exists := m.outputs[state.id]; exists {
+					outState.failed = true
+					outState.rampSize = 0
+					outState.retryCount++
+					outState.lastFailTime = time.Now()
+
+					retryCount := outState.retryCount
+					if retryCount == 1 || retryCount%5 == 0 {
+						log.Errorf("Gamma control failed for output %d (attempt %d)", state.id, retryCount)
+					}
+
+					backoff := time.Duration(300<<uint(min(retryCount-1, 4))) * time.Millisecond
+
+					time.AfterFunc(backoff, func() {
+						m.post(func() {
+							_ = m.recreateOutputControl(outState)
+						})
+					})
 				}
 				m.outputsMutex.Unlock()
-
-				// Schedule recreation with backoff
-				time.AfterFunc(300*time.Millisecond, func() {
-					m.post(func() {
-						log.Debugf("Attempting to recreate gamma control for output %d", state.id)
-						_ = m.recreateOutputControl(state)
-					})
-				})
 			})
 		}(outState)
 
 		m.outputsMutex.Lock()
 		m.outputs[output.ID()] = outState
 		m.outputsMutex.Unlock()
-
-		log.Debugf("setupOutputControls: Completed iteration %d for output %d", i, output.ID())
-	}
-
-	log.Debugf("setupOutputControls: Loop completed, processed %d outputs", len(outputs))
-
-	if doRoundtrip {
-		log.Debug("setupOutputControls: performing roundtrip to receive gamma_size events")
-		if err := m.display.Roundtrip(); err != nil {
-			log.Errorf("Roundtrip failed: %v", err)
-			return fmt.Errorf("roundtrip after control creation failed: %w", err)
-		}
-		log.Debug("setupOutputControls: Roundtrip completed successfully")
-
-		m.outputsMutex.RLock()
-		readyCount := 0
-		for _, out := range m.outputs {
-			if out.rampSize > 0 {
-				readyCount++
-				log.Infof("Output %d: gamma control ready with size=%d", out.id, out.rampSize)
-			} else {
-				log.Warnf("Output %d: no gamma_size received yet (rampSize=0)", out.id)
-			}
-		}
-		m.outputsMutex.RUnlock()
-
-		log.Infof("setupOutputControls: completed, %d/%d outputs ready", readyCount, len(m.outputs))
-	} else {
-		log.Info("setupOutputControls: completed, gamma_size events will arrive via event loop")
 	}
 
 	return nil
@@ -387,30 +368,20 @@ func (m *Manager) setupOutputControls(outputs []*wlclient.Output, manager *wlr_g
 func (m *Manager) addOutputControl(output *wlclient.Output) error {
 	outputID := output.ID()
 
-	outputName := ""
-	nameReceived := make(chan string, 1)
+	var outputName string
 	output.SetNameHandler(func(ev wlclient.OutputNameEvent) {
-		select {
-		case nameReceived <- ev.Name:
-		default:
-		}
 		outputName = ev.Name
+		m.outputsMutex.Lock()
+		if outState, exists := m.outputs[outputID]; exists {
+			outState.name = ev.Name
+			if len(ev.Name) >= 9 && ev.Name[:9] == "HEADLESS-" {
+				log.Infof("Detected virtual output %d (name=%s), marking for gamma control skip", outputID, ev.Name)
+				outState.isVirtual = true
+				outState.failed = true
+			}
+		}
+		m.outputsMutex.Unlock()
 	})
-
-	if err := m.display.Roundtrip(); err != nil {
-		return fmt.Errorf("roundtrip to get output name: %w", err)
-	}
-
-	select {
-	case name := <-nameReceived:
-		outputName = name
-	default:
-	}
-
-	if outputName != "" && len(outputName) >= 9 && outputName[:9] == "HEADLESS-" {
-		log.Infof("Skipping virtual output %d (name=%s) for gamma control", outputID, outputName)
-		return nil
-	}
 
 	gammaMgr := m.gammaControl.(*wlr_gamma_control.ZwlrGammaControlManagerV1)
 
@@ -429,9 +400,14 @@ func (m *Manager) addOutputControl(output *wlclient.Output) error {
 	}
 
 	control.SetGammaSizeHandler(func(e wlr_gamma_control.ZwlrGammaControlV1GammaSizeEvent) {
-		outState.rampSize = e.Size
-		outState.failed = false
-		log.Infof("Output %d gamma_size=%d", outState.id, e.Size)
+		m.outputsMutex.Lock()
+		if out, exists := m.outputs[outState.id]; exists {
+			out.rampSize = e.Size
+			out.failed = false
+			out.retryCount = 0
+			log.Infof("Output %d gamma_size=%d", outState.id, e.Size)
+		}
+		m.outputsMutex.Unlock()
 
 		m.transitionMutex.RLock()
 		currentTemp := m.currentTemp
@@ -443,20 +419,27 @@ func (m *Manager) addOutputControl(output *wlclient.Output) error {
 	})
 
 	control.SetFailedHandler(func(e wlr_gamma_control.ZwlrGammaControlV1FailedEvent) {
-		log.Errorf("Gamma control FAILED for output %d - marking for recreation", outState.id)
 		m.outputsMutex.Lock()
 		if out, exists := m.outputs[outState.id]; exists {
 			out.failed = true
 			out.rampSize = 0
+			out.retryCount++
+			out.lastFailTime = time.Now()
+
+			retryCount := out.retryCount
+			if retryCount == 1 || retryCount%5 == 0 {
+				log.Errorf("Gamma control failed for output %d (attempt %d)", outState.id, retryCount)
+			}
+
+			backoff := time.Duration(300<<uint(min(retryCount-1, 4))) * time.Millisecond
+
+			time.AfterFunc(backoff, func() {
+				m.post(func() {
+					_ = m.recreateOutputControl(out)
+				})
+			})
 		}
 		m.outputsMutex.Unlock()
-
-		time.AfterFunc(300*time.Millisecond, func() {
-			m.post(func() {
-				log.Debugf("Attempting to recreate gamma control for output %d", outState.id)
-				_ = m.recreateOutputControl(outState)
-			})
-		})
 	})
 
 	m.outputsMutex.Lock()
@@ -627,17 +610,28 @@ func (m *Manager) startTransition(targetTemp int) {
 }
 
 func (m *Manager) recreateOutputControl(out *outputState) error {
+	m.configMutex.RLock()
+	enabled := m.config.Enabled
+	m.configMutex.RUnlock()
+
+	if !enabled || !m.controlsInitialized {
+		return nil
+	}
+
 	m.outputsMutex.RLock()
 	_, exists := m.outputs[out.id]
 	m.outputsMutex.RUnlock()
 
 	if !exists {
-		log.Debugf("Output %d no longer exists, skipping recreation", out.id)
 		return nil
 	}
 
 	if out.isVirtual {
-		log.Debugf("Output %d is virtual, skipping recreation", out.id)
+		return nil
+	}
+
+	const maxRetries = 10
+	if out.retryCount >= maxRetries {
 		return nil
 	}
 
@@ -645,8 +639,6 @@ func (m *Manager) recreateOutputControl(out *outputState) error {
 	if !ok || gammaMgr == nil {
 		return fmt.Errorf("gamma control manager not available")
 	}
-
-	log.Debugf("Recreating gamma control for output %d", out.id)
 	control, err := gammaMgr.GetGammaControl(out.output)
 	if err != nil {
 		return fmt.Errorf("get gamma control: %w", err)
@@ -654,9 +646,14 @@ func (m *Manager) recreateOutputControl(out *outputState) error {
 
 	state := out
 	control.SetGammaSizeHandler(func(e wlr_gamma_control.ZwlrGammaControlV1GammaSizeEvent) {
-		state.rampSize = e.Size
-		state.failed = false
-		log.Infof("Output %d gamma_size=%d (recreated)", state.id, e.Size)
+		m.outputsMutex.Lock()
+		if outState, exists := m.outputs[state.id]; exists {
+			outState.rampSize = e.Size
+			outState.failed = false
+			outState.retryCount = 0
+			log.Infof("Output %d gamma_size=%d (recreated)", state.id, e.Size)
+		}
+		m.outputsMutex.Unlock()
 
 		m.transitionMutex.RLock()
 		currentTemp := m.currentTemp
@@ -668,29 +665,31 @@ func (m *Manager) recreateOutputControl(out *outputState) error {
 	})
 
 	control.SetFailedHandler(func(e wlr_gamma_control.ZwlrGammaControlV1FailedEvent) {
-		log.Errorf("Gamma control FAILED again for output %d", state.id)
 		m.outputsMutex.Lock()
 		if outState, exists := m.outputs[state.id]; exists {
 			outState.failed = true
 			outState.rampSize = 0
+			outState.retryCount++
+			outState.lastFailTime = time.Now()
+
+			retryCount := outState.retryCount
+			if retryCount == 1 || retryCount%5 == 0 {
+				log.Errorf("Gamma control failed for output %d (attempt %d)", state.id, retryCount)
+			}
+
+			backoff := time.Duration(300<<uint(min(retryCount-1, 4))) * time.Millisecond
+
+			time.AfterFunc(backoff, func() {
+				m.post(func() {
+					_ = m.recreateOutputControl(outState)
+				})
+			})
 		}
 		m.outputsMutex.Unlock()
-
-		// Schedule recreation with backoff
-		time.AfterFunc(300*time.Millisecond, func() {
-			m.post(func() {
-				log.Debugf("Attempting to recreate gamma control for output %d (after re-fail)", state.id)
-				_ = m.recreateOutputControl(state)
-			})
-		})
 	})
 
 	out.gammaControl = control
 	out.failed = false
-
-	if err := m.display.Roundtrip(); err != nil {
-		return fmt.Errorf("roundtrip after recreation: %w", err)
-	}
 
 	return nil
 }
@@ -767,7 +766,6 @@ func (m *Manager) applyNowOnActor(temp int) {
 					out, exists := m.outputs[outID]
 					m.outputsMutex.RUnlock()
 					if exists && out.failed {
-						log.Debugf("Attempting to recreate gamma control for failed output %d", outID)
 						_ = m.recreateOutputControl(out)
 					}
 				})
@@ -1228,7 +1226,10 @@ func (m *Manager) SetEnabled(enabled bool) {
 			m.post(func() {
 				log.Info("Creating gamma controls")
 				gammaMgr := m.gammaControl.(*wlr_gamma_control.ZwlrGammaControlManagerV1)
-				if err := m.setupOutputControls(m.availableOutputs, gammaMgr, false); err != nil {
+				if err := func() error {
+					var outputs []*wlclient.Output = m.availableOutputs
+					return m.setupOutputControls(outputs, gammaMgr)
+				}(); err != nil {
 					log.Errorf("Failed to create gamma controls: %v", err)
 				} else {
 					m.controlsInitialized = true

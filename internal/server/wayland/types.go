@@ -90,6 +90,8 @@ type outputState struct {
 	rampSize     uint32
 	failed       bool
 	isVirtual    bool
+	retryCount   int
+	lastFailTime time.Time
 }
 
 type SunTimes struct {
