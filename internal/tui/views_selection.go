@@ -201,11 +201,12 @@ func (m Model) detectDependencies() tea.Cmd {
 
 		// Convert TUI terminal selection to deps enum
 		var terminal deps.Terminal
-		if m.selectedTerminal == 0 {
+		switch m.selectedTerminal {
+		case 0:
 			terminal = deps.TerminalGhostty
-		} else if m.selectedTerminal == 1 {
+		case 1:
 			terminal = deps.TerminalKitty
-		} else {
+		default:
 			terminal = deps.TerminalAlacritty
 		}
 

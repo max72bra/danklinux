@@ -162,8 +162,6 @@ func TestVersionInfo_IsGit(t *testing.T) {
 
 	for _, tt := range tests {
 		info := &VersionInfo{
-			Current:  tt.current,
-			Latest:   "v0.1.0",
 			IsGit:    tt.isGit,
 			IsBranch: tt.isBranch,
 			IsTag:    tt.isTag,
@@ -209,9 +207,6 @@ func TestVersionInfo_HasUpdate_Branch(t *testing.T) {
 
 	for _, tt := range tests {
 		info := &VersionInfo{
-			Current:   tt.current,
-			Latest:    tt.latest,
-			IsBranch:  true,
 			HasUpdate: tt.hasUpdate,
 		}
 
@@ -236,9 +231,6 @@ func TestVersionInfo_HasUpdate_Tag(t *testing.T) {
 
 	for _, tt := range tests {
 		info := &VersionInfo{
-			Current:   tt.current,
-			Latest:    tt.latest,
-			IsTag:     true,
 			HasUpdate: tt.hasUpdate,
 		}
 

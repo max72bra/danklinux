@@ -3,7 +3,6 @@ package tui
 import (
 	"strings"
 
-	"github.com/AvengeMedia/danklinux/internal/deps"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -83,11 +82,4 @@ func (m Model) updateMissingWMInstructionsState(msg tea.Msg) (tea.Model, tea.Cmd
 		}
 	}
 	return m, m.listenForLogs()
-}
-
-func (m Model) getSelectedWM() deps.WindowManager {
-	if m.selectedWM == 0 {
-		return deps.WindowManagerNiri
-	}
-	return deps.WindowManagerHyprland
 }

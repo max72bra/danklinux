@@ -14,6 +14,34 @@ type ManualPackageInstaller struct {
 	*BaseDistribution
 }
 
+// parseLatestTagFromGitOutput parses git ls-remote output and returns the latest tag
+func (m *ManualPackageInstaller) parseLatestTagFromGitOutput(output string) string {
+	lines := strings.Split(output, "\n")
+	for _, line := range lines {
+		if strings.Contains(line, "refs/tags/") && !strings.Contains(line, "^{}") {
+			parts := strings.Split(line, "refs/tags/")
+			if len(parts) > 1 {
+				latestTag := strings.TrimSpace(parts[1])
+				return latestTag
+			}
+		}
+	}
+	return ""
+}
+
+// getLatestQuickshellTag fetches the latest tag from the quickshell repository
+func (m *ManualPackageInstaller) getLatestQuickshellTag(ctx context.Context) string {
+	tagCmd := exec.CommandContext(ctx, "git", "ls-remote", "--tags", "--sort=-v:refname",
+		"https://github.com/quickshell-mirror/quickshell.git")
+	tagOutput, err := tagCmd.Output()
+	if err != nil {
+		m.log(fmt.Sprintf("Warning: failed to fetch quickshell tags: %v", err))
+		return ""
+	}
+
+	return m.parseLatestTagFromGitOutput(string(tagOutput))
+}
+
 // InstallManualPackages handles packages that need manual building
 func (m *ManualPackageInstaller) InstallManualPackages(ctx context.Context, packages []string, sudoPassword string, progressChan chan<- InstallProgressMsg) error {
 	if len(packages) == 0 {
@@ -297,7 +325,15 @@ func (m *ManualPackageInstaller) installQuickshell(ctx context.Context, sudoPass
 	if forceQuickshellGit {
 		cloneCmd = exec.CommandContext(ctx, "git", "clone", "https://github.com/quickshell-mirror/quickshell.git", tmpDir)
 	} else {
-		cloneCmd = exec.CommandContext(ctx, "git", "clone", "--branch", "v0.2.1", "https://github.com/quickshell-mirror/quickshell.git", tmpDir)
+		// Get latest tag from repository
+		latestTag := m.getLatestQuickshellTag(ctx)
+		if latestTag != "" {
+			m.log(fmt.Sprintf("Using latest quickshell tag: %s", latestTag))
+			cloneCmd = exec.CommandContext(ctx, "git", "clone", "--branch", latestTag, "https://github.com/quickshell-mirror/quickshell.git", tmpDir)
+		} else {
+			m.log("Warning: failed to fetch latest tag, using default branch")
+			cloneCmd = exec.CommandContext(ctx, "git", "clone", "https://github.com/quickshell-mirror/quickshell.git", tmpDir)
+		}
 	}
 	if err := cloneCmd.Run(); err != nil {
 		return fmt.Errorf("failed to clone quickshell: %w", err)
