@@ -297,7 +297,7 @@ func (m *ManualPackageInstaller) installQuickshell(ctx context.Context, sudoPass
 	if forceQuickshellGit {
 		cloneCmd = exec.CommandContext(ctx, "git", "clone", "https://github.com/quickshell-mirror/quickshell.git", tmpDir)
 	} else {
-		cloneCmd = exec.CommandContext(ctx, "git", "clone", "--branch", "v0.2.0", "https://github.com/quickshell-mirror/quickshell.git", tmpDir)
+		cloneCmd = exec.CommandContext(ctx, "git", "clone", "--branch", "v0.2.1", "https://github.com/quickshell-mirror/quickshell.git", tmpDir)
 	}
 	if err := cloneCmd.Run(); err != nil {
 		return fmt.Errorf("failed to clone quickshell: %w", err)
