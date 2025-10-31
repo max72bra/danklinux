@@ -35,12 +35,12 @@ func (m Model) viewWelcome() string {
 	versionTag := lipgloss.NewStyle().
 		Foreground(lipgloss.Color(theme.Accent)).
 		Italic(true).
-		Render(" // Dank Desktop \"dotfiles\" installer")
+		Render(" // Dank Linux Installer")
 
 	subtitle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color(theme.Subtle)).
 		Italic(true).
-		Render("Quickstart for a Dank™ Tiling Desktop")
+		Render("Quickstart for a Dank™ Desktop")
 
 	b.WriteString(decorator)
 	b.WriteString("\n")

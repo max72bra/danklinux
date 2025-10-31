@@ -89,7 +89,7 @@ This is only needed if modifying the protocol or updating to a newer version.
 
 # Dank Linux/dankinstall
 
-Equivalent to installing "dotfiles", but less intrusive as we don't modify anything on the system besides installing some packages and configuring user-level niri and terminal configurations.
+Installs compositor, dms, terminal, and some optional dependencies - along with a default compositor & terminal configuration.
 
 ## Quickstart
 
