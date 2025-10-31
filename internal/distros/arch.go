@@ -31,6 +31,9 @@ func init() {
 	Register("manjaro", "#35BF5C", FamilyArch, func(config DistroConfig, logChan chan<- string) Distribution {
 		return NewArchDistribution(config, logChan)
 	})
+	Register("obarun", "#2494be", FamilyArch, func(config DistroConfig, logChan chan<- string) Distribution {
+		return NewArchDistribution(config, logChan)
+	})
 }
 
 type ArchDistribution struct {
