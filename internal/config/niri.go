@@ -270,12 +270,6 @@ binds {
         spawn "dms" "ipc" "call" "audio" "micmute";
     }
     
-    XF86KbdBrightnessUp allow-when-locked=true {
-        spawn "kbdbrite.sh" "up";
-    }
-    XF86KbdBrightnessDown allow-when-locked=true {
-        spawn "kbdbrite.sh" "down";
-    }
     // === Brightness Controls ===
     XF86MonBrightnessUp allow-when-locked=true {
        spawn "dms" "ipc" "call" "brightness" "increment" "5" "";

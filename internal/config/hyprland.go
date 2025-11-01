@@ -157,13 +157,9 @@ bindel = , XF86AudioLowerVolume, exec, dms ipc call audio decrement 3
 bindl = , XF86AudioMute, exec, dms ipc call audio mute
 bindl = , XF86AudioMicMute, exec, dms ipc call audio micmute
 
-# === Keyboard Backlight ===
-bindel = , XF86KbdBrightnessUp, exec, kbdbrite.sh up
-bindel = , XF86KbdBrightnessDown, exec, kbdbrite.sh down
-
 # === Brightness Controls ===
-bindel = , XF86MonBrightnessUp, exec, dms ipc call brightness increment 5
-bindel = , XF86MonBrightnessDown, exec, dms ipc call brightness decrement 5
+bindel = , XF86MonBrightnessUp, exec, dms ipc call brightness increment 5 ""
+bindel = , XF86MonBrightnessDown, exec, dms ipc call brightness decrement 5 ""
 
 # === Window Management ===
 bind = $mod, Q, killactive
