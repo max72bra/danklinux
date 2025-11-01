@@ -1,21 +1,31 @@
 <div align="center">
+  <a href="https://danklinux.com">
+    <img src="assets/danklogo.svg" alt="Dank Linux" width="200">
+  </a>
 
-<img src="assets/dank.svg" alt="DANK" width="400">
+  ### dms CLI & Backend + dankinstall
+
+[![Documentation](https://img.shields.io/badge/docs-danklinux.com-9ccbfb?style=for-the-badge&labelColor=101418)](https://danklinux.com/docs)
+[![GitHub release](https://img.shields.io/github/v/release/AvengeMedia/danklinux?style=for-the-badge&labelColor=101418&color=9ccbfb)](https://github.com/AvengeMedia/danklinux/releases)
+[![GitHub License](https://img.shields.io/badge/license-MIT-b9c8da?style=for-the-badge&labelColor=101418)](https://github.com/AvengeMedia/danklinux/blob/master/LICENSE)
 
 </div>
 
-# Dank Linux (dms & dankinstall)
+---
 
 A monorepo for dankinstall and dms (cli+go backend), a modern desktop suite for Wayland compositors.
 
+**[Full documentation →](https://danklinux.com/docs)**
+
 - **dms** DankMaterialShell (cli + go backend)
   - The backend side of dms, provides APIs for the desktop and a management CLI.
-  - Shared dbus connection for networking (NetworkManager, iwd), loginctl, accountsservice, and other interfaces.
+  - Shared dbus connection for networking (NetworkManager, iwd), loginctl, accountsservice, cups, and other interfaces.
   - Implements wayland protocols
     - wlr-gamma-control-unstable-v1 (for night mode/gamma control)
     - dwl-ipc-unstable-v2 (for dwl/MangoWC integration)
   - Exposes a json API over unix socket for interaction with these interfaces
   - Provides plugin management APIs for the shell
+  - CUPS integration for printer management
   - Optionally provides `update` interface - depending on build inputs.
     - This is intended to be disabled when packaged as part of distribution packages.
 - **dankinstall** Installs the Dank Linux suite for [niri](https://github.com/YaLTeR/niri) and/or [Hyprland](https://hypr.land)
@@ -36,6 +46,7 @@ A part of the DankMaterialShell, that is provided by this repository. It is writ
   - bluez - integration with a pairing agent
   - loginctl - creates sleep inhibitor, integrates lock before suspend, signals for lock/unlock
   - accountsservice - suite of user profile APIs - name, email, profile picture, etc.
+  - cups - printer management and configuration
 - **dms plugins**
   - APIs to browse, install, update, and search available plugins
 - **wayland**
