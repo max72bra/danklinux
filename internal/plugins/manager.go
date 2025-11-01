@@ -3,6 +3,7 @@ package plugins
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -331,7 +332,11 @@ func (m *Manager) ListInstalled() ([]string, error) {
 			}
 
 			if isPlugin {
-				installedMap[name] = true
+				// Read plugin.json to get the actual plugin ID
+				pluginID := m.getPluginID(fullPath)
+				if pluginID != "" {
+					installedMap[pluginID] = true
+				}
 			}
 		}
 	}
@@ -343,7 +348,12 @@ func (m *Manager) ListInstalled() ([]string, error) {
 		if err == nil {
 			for _, entry := range entries {
 				if entry.IsDir() {
-					installedMap[entry.Name()] = true
+					fullPath := filepath.Join(systemPluginsDir, entry.Name())
+					// Read plugin.json to get the actual plugin ID
+					pluginID := m.getPluginID(fullPath)
+					if pluginID != "" {
+						installedMap[pluginID] = true
+					}
 				}
 			}
 		}
@@ -355,6 +365,24 @@ func (m *Manager) ListInstalled() ([]string, error) {
 	}
 
 	return installed, nil
+}
+
+// getPluginID reads the plugin.json file and returns the plugin ID
+func (m *Manager) getPluginID(pluginPath string) string {
+	manifestPath := filepath.Join(pluginPath, "plugin.json")
+	data, err := afero.ReadFile(m.fs, manifestPath)
+	if err != nil {
+		return ""
+	}
+
+	var manifest struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(data, &manifest); err != nil {
+		return ""
+	}
+
+	return manifest.ID
 }
 
 func (m *Manager) GetPluginsDir() string {

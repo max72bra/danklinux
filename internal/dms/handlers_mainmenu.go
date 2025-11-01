@@ -3,8 +3,12 @@
 package dms
 
 import (
+	"time"
+
 	tea "github.com/charmbracelet/bubbletea"
 )
+
+type shellStartedMsg struct{}
 
 func (m Model) updateMainMenu(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
@@ -36,10 +40,10 @@ func (m Model) updateMainMenu(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					}
 				} else {
 					startShellDaemon()
-					m.menuItems = m.buildMenuItems()
-					if m.selectedItem >= len(m.menuItems) {
-						m.selectedItem = len(m.menuItems) - 1
-					}
+					// Wait a moment for the daemon to actually start before checking status
+					return m, tea.Tick(300*time.Millisecond, func(t time.Time) tea.Msg {
+						return shellStartedMsg{}
+					})
 				}
 			case StatePluginsMenu:
 				m.state = StatePluginsMenu

@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/AvengeMedia/danklinux/internal/server/bluez"
+	"github.com/AvengeMedia/danklinux/internal/server/cups"
 	"github.com/AvengeMedia/danklinux/internal/server/dwl"
 	"github.com/AvengeMedia/danklinux/internal/server/freedesktop"
 	"github.com/AvengeMedia/danklinux/internal/server/loginctl"
@@ -88,6 +89,20 @@ func RouteRequest(conn net.Conn, req models.Request) {
 			Params: req.Params,
 		}
 		bluez.HandleRequest(conn, bluezReq, bluezManager)
+		return
+	}
+
+	if strings.HasPrefix(req.Method, "cups.") {
+		if cupsManager == nil {
+			models.RespondError(conn, req.ID, "CUPS manager not initialized")
+			return
+		}
+		cupsReq := cups.Request{
+			ID:     req.ID,
+			Method: req.Method,
+			Params: req.Params,
+		}
+		cups.HandleRequest(conn, cupsReq, cupsManager)
 		return
 	}
 
