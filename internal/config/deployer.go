@@ -266,6 +266,7 @@ func (cd *ConfigDeployer) deployKittyConfig() (DeploymentResult, error) {
 func (cd *ConfigDeployer) detectPolkitAgent() (string, error) {
 	// Prioritize mate-polkit paths first
 	matePaths := []string{
+		"/usr/libexec/polkit-mate-authentication-agent-1", // Fedora path
 		"/usr/lib/mate-polkit/polkit-mate-authentication-agent-1",
 		"/usr/libexec/mate-polkit/polkit-mate-authentication-agent-1",
 		"/usr/lib/polkit-mate/polkit-mate-authentication-agent-1",
