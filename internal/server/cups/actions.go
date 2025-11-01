@@ -1,13 +1,13 @@
 package cups
 
 import (
-	"fmt"
-	"time"
-	"strings"
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"io"
 	"net/http"
+	"strings"
+	"time"
 )
 
 func (m *Manager) GetPrinters() ([]Printer, error) {
@@ -23,28 +23,28 @@ func (m *Manager) GetPrinters() ([]Printer, error) {
 			"printer-is-accepting-jobs",
 		},
 	}
-	
+
 	reqBuf := m.buildIPPRequest(IPP_OP_CUPS_GET_PRINTERS, m.BaseURL+"/", attrs)
 	groups, err := m.sendIPPRequest(reqBuf)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	printers := []Printer{}
-	
+
 	for i, group := range groups {
 		if i == 0 {
 			continue
 		}
-		
+
 		printer := Printer{}
-		
+
 		for name, value := range group {
 			val := value
 			if arr, ok := value.([]interface{}); ok && len(arr) > 0 {
 				val = arr[0]
 			}
-			
+
 			switch name {
 			case "printer-name":
 				printer.Name = fmt.Sprintf("%v", val)
@@ -74,20 +74,21 @@ func (m *Manager) GetPrinters() ([]Printer, error) {
 				printer.Accepting = val == true || fmt.Sprintf("%v", val) == "true" || fmt.Sprintf("%v", val) == "1"
 			}
 		}
-		
+
 		if printer.Name != "" {
 			printers = append(printers, printer)
 		}
 	}
-	
-	return printers, nil}
+
+	return printers, nil
+}
 
 func (m *Manager) GetJobs(printerName string, whichJobs string) ([]Job, error) {
 	printerURI := fmt.Sprintf("%s/printers/%s", m.BaseURL, printerName)
-		
+
 	attrs := map[string]interface{}{
 		"which-jobs": whichJobs, // "completed", "not-completed", o "all"
-		"my-jobs": false,
+		"my-jobs":    false,
 		"requested-attributes": []string{
 			"job-id",
 			"job-name",
@@ -98,32 +99,32 @@ func (m *Manager) GetJobs(printerName string, whichJobs string) ([]Job, error) {
 			"time-at-creation",
 		},
 	}
-	
+
 	reqBuf := m.buildIPPRequest(IPP_OP_GET_JOBS, printerURI, attrs)
 	groups, err := m.sendIPPRequest(reqBuf)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	return m.parseJobGroups(groups), nil
 }
 
 func (m *Manager) parseJobGroups(groups []map[string]interface{}) []Job {
 	jobs := []Job{}
-	
+
 	for i, group := range groups {
 		if i == 0 {
 			continue
 		}
-		
+
 		job := Job{}
-		
+
 		for name, value := range group {
 			val := value
 			if arr, ok := value.([]interface{}); ok && len(arr) > 0 {
 				val = arr[0]
 			}
-			
+
 			switch name {
 			case "job-id":
 				if v, ok := val.(int); ok {
@@ -169,83 +170,83 @@ func (m *Manager) parseJobGroups(groups []map[string]interface{}) []Job {
 				}
 			}
 		}
-		
+
 		if job.ID != 0 {
 			jobs = append(jobs, job)
 		}
 	}
-	
+
 	return jobs
 }
 
 func (m *Manager) CancelJob(printerName string, jobID int) error {
 	jobURI := fmt.Sprintf("%s/jobs/%d", m.BaseURL, jobID)
-	
+
 	attrs := map[string]interface{}{}
 	reqBuf := m.buildIPPRequest(IPP_OP_CANCEL_JOB, jobURI, attrs)
-	
+
 	_, err := m.sendIPPRequest(reqBuf)
 	return err
 }
 
 func (m *Manager) PausePrinter(printerName string) error {
 	printerURI := fmt.Sprintf("%s/printers/%s", m.BaseURL, printerName)
-	
+
 	attrs := map[string]interface{}{}
 	reqBuf := m.buildIPPRequest(IPP_OP_PAUSE_PRINTER, printerURI, attrs)
-	
+
 	_, err := m.sendIPPRequest(reqBuf)
 	return err
 }
 
 func (m *Manager) ResumePrinter(printerName string) error {
 	printerURI := fmt.Sprintf("%s/printers/%s", m.BaseURL, printerName)
-	
+
 	attrs := map[string]interface{}{}
 	reqBuf := m.buildIPPRequest(IPP_OP_RESUME_PRINTER, printerURI, attrs)
-	
+
 	_, err := m.sendIPPRequest(reqBuf)
 	return err
 }
 
 func (m *Manager) PurgeJobs(printerName string) error {
 	printerURI := fmt.Sprintf("%s/printers/%s", m.BaseURL, printerName)
-	
+
 	attrs := map[string]interface{}{}
 	reqBuf := m.buildIPPRequest(IPP_OP_PURGE_JOBS, printerURI, attrs)
-	
+
 	_, err := m.sendIPPRequest(reqBuf)
 	return err
 }
 
 func (m *Manager) buildIPPRequest(operation uint16, uri string, attrs map[string]interface{}) *bytes.Buffer {
 	buf := new(bytes.Buffer)
-	
+
 	// IPP Version (2.0)
 	binary.Write(buf, binary.BigEndian, uint8(2))
 	binary.Write(buf, binary.BigEndian, uint8(0))
-	
+
 	// Operation ID
 	binary.Write(buf, binary.BigEndian, operation)
-	
+
 	// Request ID
 	binary.Write(buf, binary.BigEndian, uint32(1))
-	
+
 	// Operation attributes group
 	buf.WriteByte(IPP_TAG_OPERATION)
-	
+
 	// attributes-charset
 	m.writeAttribute(buf, IPP_TAG_CHARSET, "attributes-charset", []byte("utf-8"))
-	
+
 	// attributes-natural-language
 	m.writeAttribute(buf, IPP_TAG_LANGUAGE, "attributes-natural-language", []byte("en"))
-	
+
 	// printer-uri o job-uri
 	m.writeAttribute(buf, IPP_TAG_URI, "printer-uri", []byte(uri))
-	
+
 	// requesting-user-name
 	m.writeAttribute(buf, IPP_TAG_NAME, "requesting-user-name", []byte("cups-go-client"))
-	
+
 	// Attributi aggiuntivi
 	for name, value := range attrs {
 		switch v := value.(type) {
@@ -265,10 +266,10 @@ func (m *Manager) buildIPPRequest(operation uint16, uri string, attrs map[string
 			}
 		}
 	}
-	
+
 	// End of attributes
 	buf.WriteByte(IPP_TAG_END)
-	
+
 	return buf
 }
 
@@ -305,19 +306,19 @@ func (m *Manager) sendIPPRequest(reqBuf *bytes.Buffer) ([]map[string]interface{}
 	if err != nil {
 		return nil, err
 	}
-	
+
 	req.Header.Set("Content-Type", "application/ipp")
-	
+
 	resp, err := m.Client.Do(req)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
-	
+
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("HTTP error: %d", resp.StatusCode)
 	}
-	
+
 	return m.parseIPPResponse(resp.Body)
 }
 
@@ -326,35 +327,35 @@ func (m *Manager) parseIPPResponse(r io.Reader) ([]map[string]interface{}, error
 	if err != nil {
 		return nil, err
 	}
-	
+
 	if len(data) < 8 {
 		return nil, fmt.Errorf("risposta IPP troppo corta")
 	}
-	
+
 	statusCode := binary.BigEndian.Uint16(data[2:4])
-	
+
 	if statusCode != IPP_STATUS_OK && statusCode < IPP_STATUS_CLIENT_ERROR {
 		// valid anyway
 	} else if statusCode >= IPP_STATUS_CLIENT_ERROR {
 		return nil, fmt.Errorf("errore IPP: 0x%04x", statusCode)
 	}
-	
+
 	groups := []map[string]interface{}{}
 	currentGroup := make(map[string]interface{})
 	pos := 8
 	lastAttrName := ""
-	
+
 	for pos < len(data) {
 		tag := data[pos]
 		pos++
-		
+
 		if tag == IPP_TAG_END {
 			if len(currentGroup) > 0 {
 				groups = append(groups, currentGroup)
 			}
 			break
 		}
-		
+
 		if tag == IPP_TAG_OPERATION || tag == IPP_TAG_JOB || tag == IPP_TAG_PRINTER {
 			if len(currentGroup) > 0 {
 				groups = append(groups, currentGroup)
@@ -362,44 +363,44 @@ func (m *Manager) parseIPPResponse(r io.Reader) ([]map[string]interface{}, error
 			}
 			continue
 		}
-		
+
 		if pos+2 > len(data) {
 			break
 		}
-		
+
 		nameLen := int(binary.BigEndian.Uint16(data[pos : pos+2]))
 		pos += 2
-		
+
 		if pos+nameLen > len(data) {
 			break
 		}
-		
+
 		name := string(data[pos : pos+nameLen])
 		pos += nameLen
-		
+
 		if pos+2 > len(data) {
 			break
 		}
-		
+
 		valueLen := int(binary.BigEndian.Uint16(data[pos : pos+2]))
 		pos += 2
-		
+
 		if pos+valueLen > len(data) {
 			break
 		}
-		
+
 		value := data[pos : pos+valueLen]
 		pos += valueLen
-		
+
 		if name == "" {
 			name = lastAttrName
 		} else {
 			lastAttrName = name
 		}
-		
+
 		if name != "" {
 			parsedValue := m.parseIPPValue(tag, value)
-			
+
 			if existing, ok := currentGroup[name]; ok {
 				switch existingVal := existing.(type) {
 				case []interface{}:
@@ -412,7 +413,7 @@ func (m *Manager) parseIPPResponse(r io.Reader) ([]map[string]interface{}, error
 			}
 		}
 	}
-	
+
 	return groups, nil
 }
 

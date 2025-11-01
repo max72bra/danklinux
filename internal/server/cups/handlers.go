@@ -20,8 +20,8 @@ type SuccessResult struct {
 }
 
 type CUPSEvent struct {
-	Type string         `json:"type"`
-	Data CUPSState      `json:"data"`
+	Type string    `json:"type"`
+	Data CUPSState `json:"data"`
 }
 
 func HandleRequest(conn net.Conn, req Request, manager *Manager) {
@@ -54,7 +54,7 @@ func handleGetPrintes(conn net.Conn, req Request, manager *Manager) {
 		models.RespondError(conn, req.ID, err.Error())
 		return
 	}
-	
+
 	models.Respond(conn, req.ID, printers)
 }
 
@@ -80,7 +80,7 @@ func handlePausePrinter(conn net.Conn, req Request, manager *Manager) {
 		models.RespondError(conn, req.ID, "missing or invalid 'printerName' parameter")
 		return
 	}
-	
+
 	if err := manager.PausePrinter(printerName); err != nil {
 		models.RespondError(conn, req.ID, err.Error())
 		return
@@ -94,7 +94,7 @@ func handleResumePrinter(conn net.Conn, req Request, manager *Manager) {
 		models.RespondError(conn, req.ID, "missing or invalid 'printerName' parameter")
 		return
 	}
-	
+
 	if err := manager.ResumePrinter(printerName); err != nil {
 		models.RespondError(conn, req.ID, err.Error())
 		return
@@ -113,7 +113,7 @@ func handleCancelJob(conn net.Conn, req Request, manager *Manager) {
 		models.RespondError(conn, req.ID, "missing or invalid 'jobid' parameter")
 		return
 	}
-	
+
 	if err := manager.CancelJob(printerName, jobID); err != nil {
 		models.RespondError(conn, req.ID, err.Error())
 		return
