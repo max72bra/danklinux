@@ -14,6 +14,7 @@ import (
 
 	"github.com/AvengeMedia/danklinux/internal/log"
 	"github.com/AvengeMedia/danklinux/internal/server/bluez"
+	"github.com/AvengeMedia/danklinux/internal/server/cups"
 	"github.com/AvengeMedia/danklinux/internal/server/dwl"
 	"github.com/AvengeMedia/danklinux/internal/server/freedesktop"
 	"github.com/AvengeMedia/danklinux/internal/server/loginctl"
@@ -44,6 +45,7 @@ var loginctlManager *loginctl.Manager
 var freedesktopManager *freedesktop.Manager
 var waylandManager *wayland.Manager
 var bluezManager *bluez.Manager
+var cupsManager *cups.Manager
 var dwlManager *dwl.Manager
 var wlContext *wlcontext.SharedContext
 
@@ -179,6 +181,19 @@ func InitializeBluezManager() error {
 	return nil
 }
 
+func InitializeCupsManager() error {
+	manager, err := cups.NewManager()
+	if err != nil {
+		log.Warnf("Failed to initialize cups manager: %v", err)
+		return err
+	}
+
+	cupsManager = manager
+
+	log.Info("CUPS manager initialized")
+	return nil
+}
+
 func InitializeDwlManager() error {
 	log.Info("Attempting to initialize DWL IPC...")
 
@@ -247,6 +262,10 @@ func getCapabilities() Capabilities {
 
 	if bluezManager != nil {
 		caps = append(caps, "bluetooth")
+	}
+
+	if cupsManager != nil {
+		caps = append(caps, "cups")
 	}
 
 	if dwlManager != nil {
@@ -507,6 +526,38 @@ func handleSubscribe(conn net.Conn, req models.Request) {
 		}()
 	}
 
+	if shouldSubscribe("cups") && cupsManager != nil {
+		wg.Add(1)
+		cupsChan := cupsManager.Subscribe(clientID + "-cups")
+		go func() {
+			defer wg.Done()
+			defer cupsManager.Unsubscribe(clientID + "-cups")
+
+			initialState := cupsManager.GetState()
+			select {
+			case eventChan <- ServiceEvent{Service: "cups", Data: initialState}:
+			case <-stopChan:
+				return
+			}
+
+			for {
+				select {
+				case state, ok := <-cupsChan:
+					if !ok {
+						return
+					}
+					select {
+					case eventChan <- ServiceEvent{Service: "cups", Data: state}:
+					case <-stopChan:
+						return
+					}
+				case <-stopChan:
+					return
+				}
+			}
+		}()
+	}
+	
 	if shouldSubscribe("dwl") && dwlManager != nil {
 		wg.Add(1)
 		dwlChan := dwlManager.Subscribe(clientID + "-dwl")
@@ -580,6 +631,9 @@ func cleanupManagers() {
 	if bluezManager != nil {
 		bluezManager.Close()
 	}
+	if cupsManager != nil {
+		cupsManager.Close()
+	}
 	if dwlManager != nil {
 		dwlManager.Close()
 	}
@@ -629,6 +683,12 @@ func Start(printDocs bool) error {
 		}
 	}()
 
+	go func() {
+		if err := InitializeCupsManager(); err != nil {
+			log.Warnf("CUPS manager unavailable: %v", err)
+		}
+	}()
+	
 	if err := InitializeDwlManager(); err != nil {
 		log.Debugf("DWL manager unavailable: %v", err)
 	}
@@ -721,6 +781,13 @@ func Start(printDocs bool) error {
 		log.Info(" bluetooth.pairing.submit              - Submit pairing response (params: token, secrets?, accept?)")
 		log.Info(" bluetooth.pairing.cancel              - Cancel pairing prompt (params: token)")
 		log.Info(" bluetooth.subscribe                   - Subscribe to bluetooth state changes (streaming)")
+		log.Info("CUPS:")
+		log.Info(" cups.getPrinters                      - Get printers list")
+		log.Info(" cups.getJobs                          - Get non-completed jobs list (params: printerName)")
+		log.Info(" cups.pausePrinter                     - Pause printer (params: printerName)")
+		log.Info(" cups.resumePrinter                    - Resume printer (params: printerName)")
+		log.Info(" cups.cancelJob                        - Cancel job (params: printerName, jobID)")
+		log.Info(" cups.purgeJobs                        - Cancel all jobs (params: printerName)")
 		log.Info("DWL:")
 		log.Info(" dwl.getState                          - Get current dwl state (tags, windows, layouts)")
 		log.Info(" dwl.setTags                           - Set active tags (params: output, tagmask, toggleTagset)")
