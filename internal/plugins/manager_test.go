@@ -197,7 +197,12 @@ func TestListInstalled(t *testing.T) {
 
 		err := fs.MkdirAll(filepath.Join(pluginsDir, "Plugin1"), 0755)
 		require.NoError(t, err)
+		err = afero.WriteFile(fs, filepath.Join(pluginsDir, "Plugin1", "plugin.json"), []byte(`{"id":"Plugin1"}`), 0644)
+		require.NoError(t, err)
+
 		err = fs.MkdirAll(filepath.Join(pluginsDir, "Plugin2"), 0755)
+		require.NoError(t, err)
+		err = afero.WriteFile(fs, filepath.Join(pluginsDir, "Plugin2", "plugin.json"), []byte(`{"id":"Plugin2"}`), 0644)
 		require.NoError(t, err)
 
 		installed, err := manager.ListInstalled()
@@ -221,6 +226,8 @@ func TestListInstalled(t *testing.T) {
 		err := fs.MkdirAll(pluginsDir, 0755)
 		require.NoError(t, err)
 		err = fs.MkdirAll(filepath.Join(pluginsDir, "Plugin1"), 0755)
+		require.NoError(t, err)
+		err = afero.WriteFile(fs, filepath.Join(pluginsDir, "Plugin1", "plugin.json"), []byte(`{"id":"Plugin1"}`), 0644)
 		require.NoError(t, err)
 		err = fs.MkdirAll(filepath.Join(pluginsDir, ".repos"), 0755)
 		require.NoError(t, err)
