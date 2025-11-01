@@ -155,7 +155,7 @@ func (lm *LogMonitor) processLogLine(line string) {
 	entry, err := lm.parseLogLine(line)
 
 	if err != nil {
-		log.Errorf("[CUPS] Log event error: ", err)
+		log.Error("[CUPS] Log event error", "err", err)
 	} else {
 		if entry.Status == 200 {
 			printerName := entry.GetPrinterName()
@@ -262,6 +262,7 @@ func (m *Manager) updateState() error {
 		return err
 	}
 
+	printerMap := make(map[string]*Printer, len(printers))
 	for _, printer := range printers {
 		jobs, err := m.GetJobs(printer.Name, "not-completed")
 		if err != nil {
@@ -269,11 +270,8 @@ func (m *Manager) updateState() error {
 		}
 
 		printer.Jobs = jobs
-	}
 
-	printerMap := make(map[string]*Printer, len(printers))
-	for i := range printers {
-		printerMap[printers[i].Name] = &printers[i]
+		printerMap[printer.Name] = &printer
 	}
 
 	m.stateMutex.Lock()
