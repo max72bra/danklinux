@@ -557,7 +557,7 @@ func handleSubscribe(conn net.Conn, req models.Request) {
 			}
 		}()
 	}
-	
+
 	if shouldSubscribe("dwl") && dwlManager != nil {
 		wg.Add(1)
 		dwlChan := dwlManager.Subscribe(clientID + "-dwl")
@@ -688,7 +688,7 @@ func Start(printDocs bool) error {
 			log.Warnf("CUPS manager unavailable: %v", err)
 		}
 	}()
-	
+
 	if err := InitializeDwlManager(); err != nil {
 		log.Debugf("DWL manager unavailable: %v", err)
 	}
