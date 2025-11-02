@@ -401,8 +401,8 @@ func GeneratePalette(baseColor string, opts PaletteOptions) []string {
 	}
 
 	if opts.IsLight {
+		palette = append(palette, "#1a1a1a")
 		palette = append(palette, "#2e2e2e")
-		palette = append(palette, "#4a4a4a")
 	} else {
 		palette = append(palette, "#abb2bf")
 		palette = append(palette, "#5c6370")
