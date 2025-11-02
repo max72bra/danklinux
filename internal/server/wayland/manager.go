@@ -603,6 +603,10 @@ func (m *Manager) startTransition(targetTemp int) {
 				m.targetTemp = identityTemp
 				m.transitionMutex.Unlock()
 
+				if _, err := m.display.Sync(); err != nil {
+					log.Warnf("Failed to sync Wayland display after destroying controls: %v", err)
+				}
+
 				log.Info("All gamma controls destroyed")
 			})
 		}
@@ -1241,8 +1245,41 @@ func (m *Manager) SetEnabled(enabled bool) {
 	} else {
 		if m.controlsInitialized {
 			const identityTemp = 6500
-			log.Infof("Disabling: transitioning to %dK before destroying controls", identityTemp)
-			m.startTransition(identityTemp)
+
+			m.transitionMutex.RLock()
+			currentTemp := m.currentTemp
+			m.transitionMutex.RUnlock()
+
+			if currentTemp == identityTemp {
+				m.post(func() {
+					log.Info("Already at 6500K, destroying gamma controls immediately")
+					m.outputsMutex.Lock()
+					for id, out := range m.outputs {
+						if out.gammaControl != nil {
+							control := out.gammaControl.(*wlr_gamma_control.ZwlrGammaControlV1)
+							control.Destroy()
+							log.Debugf("Destroyed gamma control for output %d", id)
+						}
+					}
+					m.outputs = make(map[uint32]*outputState)
+					m.controlsInitialized = false
+					m.outputsMutex.Unlock()
+
+					m.transitionMutex.Lock()
+					m.currentTemp = identityTemp
+					m.targetTemp = identityTemp
+					m.transitionMutex.Unlock()
+
+					if _, err := m.display.Sync(); err != nil {
+						log.Warnf("Failed to sync Wayland display after destroying controls: %v", err)
+					}
+
+					log.Info("All gamma controls destroyed")
+				})
+			} else {
+				log.Infof("Disabling: transitioning to %dK before destroying controls", identityTemp)
+				m.startTransition(identityTemp)
+			}
 		}
 	}
 }

@@ -798,9 +798,9 @@ func EnrichVSCodeTheme(themeData []byte, colors []string) ([]byte, error) {
 	} else {
 		semanticTokenColors := make(map[string]interface{})
 		updates := map[string]string{
-			"variable":          colors[7],  // neutral gray - most common, stay subtle
+			"variable":          colors[7], // neutral gray - most common, stay subtle
 			"variable.readonly": colors[11],
-			"property":          colors[7],  // neutral gray
+			"property":          colors[7], // neutral gray
 			"function":          colors[2],
 			"method":            colors[2],
 			"type":              colors[12], // type ABC
