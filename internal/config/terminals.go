@@ -8,7 +8,7 @@ font-size = 12
 window-decoration = false
 window-padding-x = 12
 window-padding-y = 12
-background-opacity = 0.90
+background-opacity = 1.0
 background-blur-radius = 32
 
 # Cursor Configuration
@@ -60,7 +60,7 @@ font_size 12.0
 
 # Window Configuration
 window_padding_width 12
-background_opacity 0.90
+background_opacity 1.0
 background_blur 32
 hide_window_decorations yes
 

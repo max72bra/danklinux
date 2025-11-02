@@ -49,6 +49,9 @@ var cupsManager *cups.Manager
 var dwlManager *dwl.Manager
 var wlContext *wlcontext.SharedContext
 
+var capabilitySubscribers = make(map[string]chan ServerInfo)
+var capabilityMutex sync.RWMutex
+
 func getSocketDir() string {
 	if runtime := os.Getenv("XDG_RUNTIME_DIR"); runtime != "" {
 		return runtime
@@ -308,6 +311,19 @@ func getServerInfo() ServerInfo {
 	}
 }
 
+func notifyCapabilityChange() {
+	capabilityMutex.RLock()
+	defer capabilityMutex.RUnlock()
+
+	info := getServerInfo()
+	for _, ch := range capabilitySubscribers {
+		select {
+		case ch <- info:
+		default:
+		}
+	}
+}
+
 func handleSubscribe(conn net.Conn, req models.Request) {
 	clientID := fmt.Sprintf("meta-client-%p", conn)
 
@@ -335,6 +351,37 @@ func handleSubscribe(conn net.Conn, req models.Request) {
 	var wg sync.WaitGroup
 	eventChan := make(chan ServiceEvent, 256)
 	stopChan := make(chan struct{})
+
+	capChan := make(chan ServerInfo, 64)
+	capabilityMutex.Lock()
+	capabilitySubscribers[clientID+"-capabilities"] = capChan
+	capabilityMutex.Unlock()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		defer func() {
+			capabilityMutex.Lock()
+			delete(capabilitySubscribers, clientID+"-capabilities")
+			capabilityMutex.Unlock()
+		}()
+
+		for {
+			select {
+			case info, ok := <-capChan:
+				if !ok {
+					return
+				}
+				select {
+				case eventChan <- ServiceEvent{Service: "server", Data: info}:
+				case <-stopChan:
+					return
+				}
+			case <-stopChan:
+				return
+			}
+		}
+	}()
 
 	shouldSubscribe := func(service string) bool {
 		if subscribeAll {
@@ -427,6 +474,38 @@ func handleSubscribe(conn net.Conn, req models.Request) {
 					}
 					select {
 					case eventChan <- ServiceEvent{Service: "loginctl", Data: state}:
+					case <-stopChan:
+						return
+					}
+				case <-stopChan:
+					return
+				}
+			}
+		}()
+	}
+
+	if shouldSubscribe("freedesktop") && freedesktopManager != nil {
+		wg.Add(1)
+		freedesktopChan := freedesktopManager.Subscribe(clientID + "-freedesktop")
+		go func() {
+			defer wg.Done()
+			defer freedesktopManager.Unsubscribe(clientID + "-freedesktop")
+
+			initialState := freedesktopManager.GetState()
+			select {
+			case eventChan <- ServiceEvent{Service: "freedesktop", Data: initialState}:
+			case <-stopChan:
+				return
+			}
+
+			for {
+				select {
+				case state, ok := <-freedesktopChan:
+					if !ok {
+						return
+					}
+					select {
+					case eventChan <- ServiceEvent{Service: "freedesktop", Data: state}:
 					case <-stopChan:
 						return
 					}
@@ -658,18 +737,25 @@ func Start(printDocs bool) error {
 	go func() {
 		if err := InitializeNetworkManager(); err != nil {
 			log.Warnf("Network manager unavailable: %v", err)
+		} else {
+			notifyCapabilityChange()
 		}
 	}()
 
 	go func() {
 		if err := InitializeLoginctlManager(); err != nil {
 			log.Warnf("Loginctl manager unavailable: %v", err)
+		} else {
+			notifyCapabilityChange()
 		}
 	}()
 
 	go func() {
 		if err := InitializeFreedeskManager(); err != nil {
 			log.Warnf("Freedesktop manager unavailable: %v", err)
+		} else if freedesktopManager != nil {
+			freedesktopManager.NotifySubscribers()
+			notifyCapabilityChange()
 		}
 	}()
 
@@ -680,12 +766,16 @@ func Start(printDocs bool) error {
 	go func() {
 		if err := InitializeBluezManager(); err != nil {
 			log.Warnf("Bluez manager unavailable: %v", err)
+		} else {
+			notifyCapabilityChange()
 		}
 	}()
 
 	go func() {
 		if err := InitializeCupsManager(); err != nil {
 			log.Warnf("CUPS manager unavailable: %v", err)
+		} else {
+			notifyCapabilityChange()
 		}
 	}()
 

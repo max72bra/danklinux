@@ -29,6 +29,8 @@ func NewManager() (*Manager, error) {
 		systemConn:  systemConn,
 		sessionConn: sessionConn,
 		currentUID:  uint64(os.Getuid()),
+		subscribers: make(map[string]chan FreedeskState),
+		subMutex:    sync.RWMutex{},
 	}
 
 	m.initializeAccounts()
@@ -202,7 +204,44 @@ func (m *Manager) GetState() FreedeskState {
 	return *m.state
 }
 
+func (m *Manager) Subscribe(id string) chan FreedeskState {
+	ch := make(chan FreedeskState, 64)
+	m.subMutex.Lock()
+	m.subscribers[id] = ch
+	m.subMutex.Unlock()
+	return ch
+}
+
+func (m *Manager) Unsubscribe(id string) {
+	m.subMutex.Lock()
+	if ch, ok := m.subscribers[id]; ok {
+		close(ch)
+		delete(m.subscribers, id)
+	}
+	m.subMutex.Unlock()
+}
+
+func (m *Manager) NotifySubscribers() {
+	m.subMutex.RLock()
+	defer m.subMutex.RUnlock()
+
+	state := m.GetState()
+	for _, ch := range m.subscribers {
+		select {
+		case ch <- state:
+		default:
+		}
+	}
+}
+
 func (m *Manager) Close() {
+	m.subMutex.Lock()
+	for id, ch := range m.subscribers {
+		close(ch)
+		delete(m.subscribers, id)
+	}
+	m.subMutex.Unlock()
+
 	if m.systemConn != nil {
 		m.systemConn.Close()
 	}

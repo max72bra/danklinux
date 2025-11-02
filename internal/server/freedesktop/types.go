@@ -41,4 +41,6 @@ type Manager struct {
 	accountsObj dbus.BusObject
 	settingsObj dbus.BusObject
 	currentUID  uint64
+	subscribers map[string]chan FreedeskState
+	subMutex    sync.RWMutex
 }

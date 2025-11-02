@@ -566,3 +566,211 @@ func TestRGBHSVRoundTrip(t *testing.T) {
 func floatEqual(a, b float64) bool {
 	return math.Abs(a-b) < 1e-9
 }
+
+func TestDeltaPhiStar(t *testing.T) {
+	tests := []struct {
+		name             string
+		fg               string
+		bg               string
+		negativePolarity bool
+		minExpected      float64
+	}{
+		{
+			name:             "white on black (negative polarity)",
+			fg:               "#ffffff",
+			bg:               "#000000",
+			negativePolarity: true,
+			minExpected:      100.0,
+		},
+		{
+			name:             "black on white (positive polarity)",
+			fg:               "#000000",
+			bg:               "#ffffff",
+			negativePolarity: false,
+			minExpected:      100.0,
+		},
+		{
+			name:             "low contrast same color",
+			fg:               "#808080",
+			bg:               "#808080",
+			negativePolarity: false,
+			minExpected:      -40.0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := DeltaPhiStar(tt.fg, tt.bg, tt.negativePolarity)
+			if result < tt.minExpected {
+				t.Errorf("DeltaPhiStar(%s, %s, %v) = %f, expected >= %f",
+					tt.fg, tt.bg, tt.negativePolarity, result, tt.minExpected)
+			}
+		})
+	}
+}
+
+func TestDeltaPhiStarContrast(t *testing.T) {
+	tests := []struct {
+		name        string
+		fg          string
+		bg          string
+		isLightMode bool
+		minExpected float64
+	}{
+		{
+			name:        "white on black (dark mode)",
+			fg:          "#ffffff",
+			bg:          "#000000",
+			isLightMode: false,
+			minExpected: 100.0,
+		},
+		{
+			name:        "black on white (light mode)",
+			fg:          "#000000",
+			bg:          "#ffffff",
+			isLightMode: true,
+			minExpected: 100.0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := DeltaPhiStarContrast(tt.fg, tt.bg, tt.isLightMode)
+			if result < tt.minExpected {
+				t.Errorf("DeltaPhiStarContrast(%s, %s, %v) = %f, expected >= %f",
+					tt.fg, tt.bg, tt.isLightMode, result, tt.minExpected)
+			}
+		})
+	}
+}
+
+func TestEnsureContrastDPS(t *testing.T) {
+	tests := []struct {
+		name        string
+		color       string
+		bg          string
+		minLc       float64
+		isLightMode bool
+	}{
+		{
+			name:        "already sufficient contrast dark mode",
+			color:       "#ffffff",
+			bg:          "#000000",
+			minLc:       60.0,
+			isLightMode: false,
+		},
+		{
+			name:        "already sufficient contrast light mode",
+			color:       "#000000",
+			bg:          "#ffffff",
+			minLc:       60.0,
+			isLightMode: true,
+		},
+		{
+			name:        "needs adjustment dark mode",
+			color:       "#404040",
+			bg:          "#1a1a1a",
+			minLc:       60.0,
+			isLightMode: false,
+		},
+		{
+			name:        "needs adjustment light mode",
+			color:       "#c0c0c0",
+			bg:          "#f8f8f8",
+			minLc:       60.0,
+			isLightMode: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := EnsureContrastDPS(tt.color, tt.bg, tt.minLc, tt.isLightMode)
+			actualLc := DeltaPhiStarContrast(result, tt.bg, tt.isLightMode)
+			if actualLc < tt.minLc {
+				t.Errorf("EnsureContrastDPS(%s, %s, %f, %t) = %s with Lc %f, expected Lc >= %f",
+					tt.color, tt.bg, tt.minLc, tt.isLightMode, result, actualLc, tt.minLc)
+			}
+		})
+	}
+}
+
+func TestGeneratePaletteWithDPS(t *testing.T) {
+	tests := []struct {
+		name string
+		base string
+		opts PaletteOptions
+	}{
+		{
+			name: "dark theme with DPS",
+			base: "#625690",
+			opts: PaletteOptions{IsLight: false, UseDPS: true},
+		},
+		{
+			name: "light theme with DPS",
+			base: "#625690",
+			opts: PaletteOptions{IsLight: true, UseDPS: true},
+		},
+		{
+			name: "dark theme with DPS and honor primary",
+			base: "#625690",
+			opts: PaletteOptions{
+				IsLight:      false,
+				HonorPrimary: "#ff6600",
+				UseDPS:       true,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := GeneratePalette(tt.base, tt.opts)
+
+			if len(result) != 16 {
+				t.Errorf("GeneratePalette returned %d colors, expected 16", len(result))
+			}
+
+			for i, color := range result {
+				if len(color) != 7 || color[0] != '#' {
+					t.Errorf("Color at index %d (%s) is not a valid hex color", i, color)
+				}
+			}
+
+			bgColor := result[0]
+			for i := 1; i < 8; i++ {
+				lc := DeltaPhiStarContrast(result[i], bgColor, tt.opts.IsLight)
+				minLc := 30.0
+				if lc < minLc && lc > 0 {
+					t.Errorf("Color %d (%s) has insufficient DPS contrast %f with background %s (expected >= %f)",
+						i, result[i], lc, bgColor, minLc)
+				}
+			}
+		})
+	}
+}
+
+func TestContrastAlgorithmComparison(t *testing.T) {
+	base := "#625690"
+
+	optsWCAG := PaletteOptions{IsLight: false, UseDPS: false}
+	optsDPS := PaletteOptions{IsLight: false, UseDPS: true}
+
+	paletteWCAG := GeneratePalette(base, optsWCAG)
+	paletteDPS := GeneratePalette(base, optsDPS)
+
+	if len(paletteWCAG) != 16 || len(paletteDPS) != 16 {
+		t.Fatal("Both palettes should have 16 colors")
+	}
+
+	if paletteWCAG[0] != paletteDPS[0] {
+		t.Errorf("Background colors differ: WCAG=%s, DPS=%s", paletteWCAG[0], paletteDPS[0])
+	}
+
+	differentCount := 0
+	for i := 0; i < 16; i++ {
+		if paletteWCAG[i] != paletteDPS[i] {
+			differentCount++
+		}
+	}
+
+	t.Logf("WCAG and DPS palettes differ in %d/16 colors", differentCount)
+}

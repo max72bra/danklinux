@@ -26,6 +26,7 @@ func init() {
 	dank16Cmd.Flags().String("vscode-enrich", "", "Enrich existing VSCode theme file with terminal colors")
 	dank16Cmd.Flags().String("honor-primary", "", "Honor primary color for specific palette positions")
 	dank16Cmd.Flags().String("background", "", "Custom background color")
+	dank16Cmd.Flags().String("contrast", "dps", "Contrast algorithm: dps (Delta Phi Star, default) or wcag")
 }
 
 func runDank16(cmd *cobra.Command, args []string) {
@@ -40,6 +41,7 @@ func runDank16(cmd *cobra.Command, args []string) {
 	vscodeEnrich, _ := cmd.Flags().GetString("vscode-enrich")
 	honorPrimary, _ := cmd.Flags().GetString("honor-primary")
 	background, _ := cmd.Flags().GetString("background")
+	contrastAlgo, _ := cmd.Flags().GetString("contrast")
 
 	if honorPrimary != "" && !strings.HasPrefix(honorPrimary, "#") {
 		honorPrimary = "#" + honorPrimary
@@ -49,10 +51,16 @@ func runDank16(cmd *cobra.Command, args []string) {
 		background = "#" + background
 	}
 
+	contrastAlgo = strings.ToLower(contrastAlgo)
+	if contrastAlgo != "dps" && contrastAlgo != "wcag" {
+		log.Fatalf("Invalid contrast algorithm: %s (must be 'dps' or 'wcag')", contrastAlgo)
+	}
+
 	opts := dank16.PaletteOptions{
 		IsLight:      isLight,
 		HonorPrimary: honorPrimary,
 		Background:   background,
+		UseDPS:       contrastAlgo == "dps",
 	}
 
 	colors := dank16.GeneratePalette(baseColor, opts)

@@ -500,6 +500,6 @@ func TestHyprlandConfigStructure(t *testing.T) {
 func TestGhosttyConfigStructure(t *testing.T) {
 	// Verify the embedded Ghostty config has expected settings
 	assert.Contains(t, GhosttyConfig, "window-decoration = false")
-	assert.Contains(t, GhosttyConfig, "background-opacity = 0.90")
+	assert.Contains(t, GhosttyConfig, "background-opacity = 1.0")
 	assert.Contains(t, GhosttyConfig, "config-file = ./config-dankcolors")
 }
