@@ -22,6 +22,8 @@ var dank16Cmd = &cobra.Command{
 func init() {
 	dank16Cmd.Flags().Bool("light", false, "Generate light theme variant")
 	dank16Cmd.Flags().Bool("kitty", false, "Output in Kitty terminal format")
+	dank16Cmd.Flags().Bool("foot", false, "Output in Foot terminal format")
+	dank16Cmd.Flags().Bool("alacritty", false, "Output in Alacritty terminal format")
 	dank16Cmd.Flags().Bool("vscode", false, "Output as VSCode theme JSON")
 	dank16Cmd.Flags().String("vscode-enrich", "", "Enrich existing VSCode theme file with terminal colors")
 	dank16Cmd.Flags().String("honor-primary", "", "Honor primary color for specific palette positions")
@@ -37,6 +39,8 @@ func runDank16(cmd *cobra.Command, args []string) {
 
 	isLight, _ := cmd.Flags().GetBool("light")
 	isKitty, _ := cmd.Flags().GetBool("kitty")
+	isFoot, _ := cmd.Flags().GetBool("foot")
+	isAlacritty, _ := cmd.Flags().GetBool("alacritty")
 	isVSCode, _ := cmd.Flags().GetBool("vscode")
 	vscodeEnrich, _ := cmd.Flags().GetString("vscode-enrich")
 	honorPrimary, _ := cmd.Flags().GetString("honor-primary")
@@ -109,6 +113,34 @@ func runDank16(cmd *cobra.Command, args []string) {
 		for _, kc := range kittyColors {
 			fmt.Printf("%s   %s\n", kc.name, kc.color)
 		}
+	} else if isFoot {
+		footColors := []struct {
+			name  string
+			index int
+		}{
+			{"regular0", 0},
+			{"regular1", 1},
+			{"regular2", 2},
+			{"regular3", 3},
+			{"regular4", 4},
+			{"regular5", 5},
+			{"regular6", 6},
+			{"regular7", 7},
+			{"bright0", 8},
+			{"bright1", 9},
+			{"bright2", 10},
+			{"bright3", 11},
+			{"bright4", 12},
+			{"bright5", 13},
+			{"bright6", 14},
+			{"bright7", 15},
+		}
+
+		for _, fc := range footColors {
+			fmt.Printf("%s=%s\n", fc.name, strings.TrimPrefix(colors[fc.index], "#"))
+		}
+	} else if isAlacritty {
+		fmt.Print(dank16.GenerateAlacrittyTheme(colors))
 	} else {
 		for i, color := range colors {
 			fmt.Printf("palette = %d=%s\n", i, color)

@@ -668,6 +668,30 @@ func GenerateVSCodeTheme(colors []string, isLight bool) VSCodeTheme {
 	return theme
 }
 
+func GenerateAlacrittyTheme(colors []string) string {
+	var result string
+	result += "[colors.normal]\n"
+	result += fmt.Sprintf("black   = '%s'\n", colors[0])
+	result += fmt.Sprintf("red     = '%s'\n", colors[1])
+	result += fmt.Sprintf("green   = '%s'\n", colors[2])
+	result += fmt.Sprintf("yellow  = '%s'\n", colors[3])
+	result += fmt.Sprintf("blue    = '%s'\n", colors[4])
+	result += fmt.Sprintf("magenta = '%s'\n", colors[5])
+	result += fmt.Sprintf("cyan    = '%s'\n", colors[6])
+	result += fmt.Sprintf("white   = '%s'\n", colors[7])
+	result += "\n"
+	result += "[colors.bright]\n"
+	result += fmt.Sprintf("black   = '%s'\n", colors[8])
+	result += fmt.Sprintf("red     = '%s'\n", colors[9])
+	result += fmt.Sprintf("green   = '%s'\n", colors[10])
+	result += fmt.Sprintf("yellow  = '%s'\n", colors[11])
+	result += fmt.Sprintf("blue    = '%s'\n", colors[12])
+	result += fmt.Sprintf("magenta = '%s'\n", colors[13])
+	result += fmt.Sprintf("cyan    = '%s'\n", colors[14])
+	result += fmt.Sprintf("white   = '%s'\n", colors[15])
+	return result
+}
+
 func EnrichVSCodeTheme(themeData []byte, colors []string) ([]byte, error) {
 	var theme map[string]interface{}
 	if err := json.Unmarshal(themeData, &theme); err != nil {
