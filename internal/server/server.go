@@ -14,6 +14,7 @@ import (
 
 	"github.com/AvengeMedia/danklinux/internal/log"
 	"github.com/AvengeMedia/danklinux/internal/server/bluez"
+	"github.com/AvengeMedia/danklinux/internal/server/brightness"
 	"github.com/AvengeMedia/danklinux/internal/server/cups"
 	"github.com/AvengeMedia/danklinux/internal/server/dwl"
 	"github.com/AvengeMedia/danklinux/internal/server/freedesktop"
@@ -24,7 +25,7 @@ import (
 	"github.com/AvengeMedia/danklinux/internal/server/wlcontext"
 )
 
-const APIVersion = 12
+const APIVersion = 13
 
 type Capabilities struct {
 	Capabilities []string `json:"capabilities"`
@@ -47,6 +48,7 @@ var waylandManager *wayland.Manager
 var bluezManager *bluez.Manager
 var cupsManager *cups.Manager
 var dwlManager *dwl.Manager
+var brightnessManager *brightness.Manager
 var wlContext *wlcontext.SharedContext
 
 var capabilitySubscribers = make(map[string]chan ServerInfo)
@@ -221,6 +223,19 @@ func InitializeDwlManager() error {
 	return nil
 }
 
+func InitializeBrightnessManager() error {
+	manager, err := brightness.NewManager()
+	if err != nil {
+		log.Warnf("Failed to initialize brightness manager: %v", err)
+		return err
+	}
+
+	brightnessManager = manager
+
+	log.Info("Brightness manager initialized")
+	return nil
+}
+
 func handleConnection(conn net.Conn) {
 	defer conn.Close()
 
@@ -275,6 +290,10 @@ func getCapabilities() Capabilities {
 		caps = append(caps, "dwl")
 	}
 
+	if brightnessManager != nil {
+		caps = append(caps, "brightness")
+	}
+
 	return Capabilities{Capabilities: caps}
 }
 
@@ -303,6 +322,10 @@ func getServerInfo() ServerInfo {
 
 	if dwlManager != nil {
 		caps = append(caps, "dwl")
+	}
+
+	if brightnessManager != nil {
+		caps = append(caps, "brightness")
 	}
 
 	return ServerInfo{
@@ -669,6 +692,38 @@ func handleSubscribe(conn net.Conn, req models.Request) {
 		}()
 	}
 
+	if shouldSubscribe("brightness") && brightnessManager != nil {
+		wg.Add(1)
+		brightnessChan := brightnessManager.Subscribe(clientID + "-brightness")
+		go func() {
+			defer wg.Done()
+			defer brightnessManager.Unsubscribe(clientID + "-brightness")
+
+			initialState := brightnessManager.GetState()
+			select {
+			case eventChan <- ServiceEvent{Service: "brightness", Data: initialState}:
+			case <-stopChan:
+				return
+			}
+
+			for {
+				select {
+				case state, ok := <-brightnessChan:
+					if !ok {
+						return
+					}
+					select {
+					case eventChan <- ServiceEvent{Service: "brightness", Data: state}:
+					case <-stopChan:
+						return
+					}
+				case <-stopChan:
+					return
+				}
+			}
+		}()
+	}
+
 	go func() {
 		wg.Wait()
 		close(eventChan)
@@ -715,6 +770,9 @@ func cleanupManagers() {
 	}
 	if dwlManager != nil {
 		dwlManager.Close()
+	}
+	if brightnessManager != nil {
+		brightnessManager.Close()
 	}
 	if wlContext != nil {
 		wlContext.Close()
@@ -783,15 +841,27 @@ func Start(printDocs bool) error {
 		log.Debugf("DWL manager unavailable: %v", err)
 	}
 
+	go func() {
+		if err := InitializeBrightnessManager(); err != nil {
+			log.Warnf("Brightness manager unavailable: %v", err)
+		} else {
+			notifyCapabilityChange()
+		}
+	}()
+
 	if wlContext != nil {
 		wlContext.Start()
 		log.Info("Wayland event dispatcher started")
 	}
 
 	log.Infof("DMS API Server listening on: %s", socketPath)
+	log.Infof("API Version: %d", APIVersion)
 	log.Info("Protocol: JSON over Unix socket")
 	log.Info("Request format: {\"id\": <any>, \"method\": \"...\", \"params\": {...}}")
 	log.Info("Response format: {\"id\": <any>, \"result\": {...}} or {\"id\": <any>, \"error\": \"...\"}")
+	log.Info("")
+	log.Infof("Capabilities: %v", getCapabilities().Capabilities)
+	log.Info("")
 	if printDocs {
 		log.Info("Available methods:")
 		log.Info("  ping          - Test connection")
@@ -884,6 +954,10 @@ func Start(printDocs bool) error {
 		log.Info(" dwl.setClientTags                     - Set focused client tags (params: output, andTags, xorTags)")
 		log.Info(" dwl.setLayout                         - Set layout (params: output, index)")
 		log.Info(" dwl.subscribe                         - Subscribe to dwl state changes (streaming)")
+		log.Info("Brightness:")
+		log.Info(" brightness.getState                   - Get current brightness state for all devices")
+		log.Info(" brightness.setBrightness              - Set device brightness (params: device, percent)")
+		log.Info(" brightness.subscribe                  - Subscribe to brightness state changes (streaming)")
 	}
 
 	for {

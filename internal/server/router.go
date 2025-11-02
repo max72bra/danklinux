@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/AvengeMedia/danklinux/internal/server/bluez"
+	"github.com/AvengeMedia/danklinux/internal/server/brightness"
 	"github.com/AvengeMedia/danklinux/internal/server/cups"
 	"github.com/AvengeMedia/danklinux/internal/server/dwl"
 	"github.com/AvengeMedia/danklinux/internal/server/freedesktop"
@@ -117,6 +118,20 @@ func RouteRequest(conn net.Conn, req models.Request) {
 			Params: req.Params,
 		}
 		dwl.HandleRequest(conn, dwlReq, dwlManager)
+		return
+	}
+
+	if strings.HasPrefix(req.Method, "brightness.") {
+		if brightnessManager == nil {
+			models.RespondError(conn, req.ID, "brightness manager not initialized")
+			return
+		}
+		brightnessReq := brightness.Request{
+			ID:     req.ID,
+			Method: req.Method,
+			Params: req.Params,
+		}
+		brightness.HandleRequest(conn, brightnessReq, brightnessManager)
 		return
 	}
 

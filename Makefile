@@ -6,6 +6,11 @@ BUILD_DIR=bin
 PREFIX ?= /usr/local
 INSTALL_DIR=$(PREFIX)/bin
 
+# System configuration paths
+UDEV_RULES_DIR=/etc/udev/rules.d
+MODPROBE_DIR=/etc/modprobe.d
+MODULES_LOAD_DIR=/usr/lib/modules-load.d
+
 GO=go
 GOFLAGS=-ldflags="-s -w"
 
@@ -19,7 +24,7 @@ BUILD_LDFLAGS=-ldflags='-s -w -X main.Version=$(VERSION) -X main.buildTime=$(BUI
 # Architecture to build for dist target (amd64, arm64, or all)
 ARCH ?= all
 
-.PHONY: all build dankinstall dist clean install uninstall test fmt vet deps help
+.PHONY: all build dankinstall dist clean install install-all install-dankinstall uninstall uninstall-all uninstall-dankinstall install-config uninstall-config test fmt vet deps help
 
 # Default target
 all: build
@@ -60,21 +65,64 @@ endif
 
 build-all: build dankinstall
 
-install: build-all
+install: build
 	@echo "Installing $(BINARY_NAME) to $(INSTALL_DIR)..."
-	@cp $(BUILD_DIR)/$(BINARY_NAME) $(INSTALL_DIR)/$(BINARY_NAME)
-	@chmod +x $(INSTALL_DIR)/$(BINARY_NAME)
-	@echo "Installing $(BINARY_NAME_INSTALL) to $(INSTALL_DIR)..."
-	@cp $(BUILD_DIR)/$(BINARY_NAME_INSTALL) $(INSTALL_DIR)/$(BINARY_NAME_INSTALL)
-	@chmod +x $(INSTALL_DIR)/$(BINARY_NAME_INSTALL)
+	@install -D -m 755 $(BUILD_DIR)/$(BINARY_NAME) $(INSTALL_DIR)/$(BINARY_NAME)
 	@echo "Installation complete"
 
+install-all: build-all
+	@echo "Installing $(BINARY_NAME) to $(INSTALL_DIR)..."
+	@install -D -m 755 $(BUILD_DIR)/$(BINARY_NAME) $(INSTALL_DIR)/$(BINARY_NAME)
+	@echo "Installing $(BINARY_NAME_INSTALL) to $(INSTALL_DIR)..."
+	@install -D -m 755 $(BUILD_DIR)/$(BINARY_NAME_INSTALL) $(INSTALL_DIR)/$(BINARY_NAME_INSTALL)
+	@echo "Installation complete"
+
+install-dankinstall: dankinstall
+	@echo "Installing $(BINARY_NAME_INSTALL) to $(INSTALL_DIR)..."
+	@install -D -m 755 $(BUILD_DIR)/$(BINARY_NAME_INSTALL) $(INSTALL_DIR)/$(BINARY_NAME_INSTALL)
+	@echo "Installation complete"
+
+install-config:
+	@echo "Installing system configuration files..."
+	@install -D -m 644 assets/udev/99-dms.rules $(UDEV_RULES_DIR)/99-dms.rules
+	@install -D -m 644 assets/data/usr/lib/modules-load.d/i2c.conf $(MODULES_LOAD_DIR)/i2c.conf
+	@install -D -m 644 assets/data/etc/modprobe.d/nvidia-i2c.conf $(MODPROBE_DIR)/nvidia-i2c.conf
+	@echo "Reloading udev rules..."
+	@-udevadm control --reload-rules 2>/dev/null || true
+	@-udevadm trigger 2>/dev/null || true
+	@echo "Configuration installation complete"
+	@echo ""
+	@echo "Note: You may need to:"
+	@echo "  1. Add your user to the 'video' group: sudo usermod -aG video \$$USER"
+	@echo "  2. Add your user to the 'input' group: sudo usermod -aG input \$$USER"
+	@echo "  3. Load i2c-dev module: sudo modprobe i2c-dev"
+	@echo "  4. Reboot or re-login for group changes to take effect"
+
 uninstall:
+	@echo "Uninstalling $(BINARY_NAME) from $(INSTALL_DIR)..."
+	@rm -f $(INSTALL_DIR)/$(BINARY_NAME)
+	@echo "Uninstall complete"
+
+uninstall-all:
 	@echo "Uninstalling $(BINARY_NAME) from $(INSTALL_DIR)..."
 	@rm -f $(INSTALL_DIR)/$(BINARY_NAME)
 	@echo "Uninstalling $(BINARY_NAME_INSTALL) from $(INSTALL_DIR)..."
 	@rm -f $(INSTALL_DIR)/$(BINARY_NAME_INSTALL)
 	@echo "Uninstall complete"
+
+uninstall-dankinstall:
+	@echo "Uninstalling $(BINARY_NAME_INSTALL) from $(INSTALL_DIR)..."
+	@rm -f $(INSTALL_DIR)/$(BINARY_NAME_INSTALL)
+	@echo "Uninstall complete"
+
+uninstall-config:
+	@echo "Removing system configuration files..."
+	@rm -f $(UDEV_RULES_DIR)/99-dms.rules
+	@rm -f $(MODULES_LOAD_DIR)/i2c.conf
+	@rm -f $(MODPROBE_DIR)/nvidia-i2c.conf
+	@echo "Reloading udev rules..."
+	@-udevadm control --reload-rules 2>/dev/null || true
+	@echo "Configuration uninstall complete"
 
 clean:
 	@echo "Cleaning build artifacts..."
@@ -116,20 +164,26 @@ version: check-go
 
 help:
 	@echo "Available targets:"
-	@echo "  all          - Build the main binary (dms) (default)"
-	@echo "  build        - Build the main binary (dms)"
-	@echo "  dankinstall  - Build dankinstall binary"
-	@echo "  dist         - Build dms for linux amd64/arm64 (no update/greeter)"
-	@echo "                 Use ARCH=amd64 or ARCH=arm64 to build only one"
-	@echo "  build-all    - Build both binaries"
-	@echo "  install      - Install both binaries to $(INSTALL_DIR)"
-	@echo "  uninstall    - Remove binaries from $(INSTALL_DIR)"
-	@echo "  clean        - Clean build artifacts"
-	@echo "  test         - Run tests"
-	@echo "  fmt          - Format Go code"
-	@echo "  vet          - Run go vet"
-	@echo "  deps         - Update dependencies"
-	@echo "  dev          - Build with debug info"
-	@echo "  check-go     - Check Go version compatibility"
-	@echo "  version      - Show version information"
-	@echo "  help         - Show this help message"
+	@echo "  all                 - Build the main binary (dms) (default)"
+	@echo "  build               - Build the main binary (dms)"
+	@echo "  dankinstall         - Build dankinstall binary"
+	@echo "  dist                - Build dms for linux amd64/arm64 (no update/greeter)"
+	@echo "                        Use ARCH=amd64 or ARCH=arm64 to build only one"
+	@echo "  build-all           - Build both binaries"
+	@echo "  install             - Install dms to $(INSTALL_DIR)"
+	@echo "  install-all         - Install both dms and dankinstall to $(INSTALL_DIR)"
+	@echo "  install-dankinstall - Install only dankinstall to $(INSTALL_DIR)"
+	@echo "  install-config      - Install udev rules and system config (requires root)"
+	@echo "  uninstall           - Remove dms from $(INSTALL_DIR)"
+	@echo "  uninstall-all       - Remove both binaries from $(INSTALL_DIR)"
+	@echo "  uninstall-dankinstall - Remove only dankinstall from $(INSTALL_DIR)"
+	@echo "  uninstall-config    - Remove udev rules and system config (requires root)"
+	@echo "  clean               - Clean build artifacts"
+	@echo "  test                - Run tests"
+	@echo "  fmt                 - Format Go code"
+	@echo "  vet                 - Run go vet"
+	@echo "  deps                - Update dependencies"
+	@echo "  dev                 - Build with debug info"
+	@echo "  check-go            - Check Go version compatibility"
+	@echo "  version             - Show version information"
+	@echo "  help                - Show this help message"
