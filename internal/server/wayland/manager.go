@@ -580,9 +580,9 @@ func (m *Manager) startTransition(targetTemp int) {
 
 		m.configMutex.RLock()
 		enabled := m.config.Enabled
+		identityTemp := m.config.HighTemp
 		m.configMutex.RUnlock()
 
-		const identityTemp = 6500
 		if !enabled && targetTemp == identityTemp && m.controlsInitialized {
 			m.post(func() {
 				log.Info("Destroying gamma controls after transition to identity")
@@ -1244,7 +1244,9 @@ func (m *Manager) SetEnabled(enabled bool) {
 		}
 	} else {
 		if m.controlsInitialized {
-			const identityTemp = 6500
+			m.configMutex.RLock()
+			identityTemp := m.config.HighTemp
+			m.configMutex.RUnlock()
 
 			m.transitionMutex.RLock()
 			currentTemp := m.currentTemp
@@ -1252,7 +1254,7 @@ func (m *Manager) SetEnabled(enabled bool) {
 
 			if currentTemp == identityTemp {
 				m.post(func() {
-					log.Info("Already at 6500K, destroying gamma controls immediately")
+					log.Infof("Already at %dK, destroying gamma controls immediately", identityTemp)
 					m.outputsMutex.Lock()
 					for id, out := range m.outputs {
 						if out.gammaControl != nil {
