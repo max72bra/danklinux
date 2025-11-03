@@ -332,6 +332,11 @@ func killShell() {
 			continue
 		}
 
+		// Check if process is still alive before killing
+		if err := proc.Signal(syscall.Signal(0)); err != nil {
+			continue
+		}
+
 		if err := proc.Kill(); err != nil {
 			log.Errorf("Error killing process %d: %v", pid, err)
 		} else {
