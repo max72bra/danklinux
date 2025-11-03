@@ -66,6 +66,8 @@ type SysfsBackend struct {
 
 	deviceCache      map[string]*sysfsDevice
 	deviceCacheMutex sync.RWMutex
+
+	logind *LogindBackend
 }
 
 type sysfsDevice struct {

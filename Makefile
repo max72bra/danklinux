@@ -6,11 +6,6 @@ BUILD_DIR=bin
 PREFIX ?= /usr/local
 INSTALL_DIR=$(PREFIX)/bin
 
-# System configuration paths
-UDEV_RULES_DIR=/etc/udev/rules.d
-MODPROBE_DIR=/etc/modprobe.d
-MODULES_LOAD_DIR=/usr/lib/modules-load.d
-
 GO=go
 GOFLAGS=-ldflags="-s -w"
 
@@ -82,20 +77,6 @@ install-dankinstall: dankinstall
 	@install -D -m 755 $(BUILD_DIR)/$(BINARY_NAME_INSTALL) $(INSTALL_DIR)/$(BINARY_NAME_INSTALL)
 	@echo "Installation complete"
 
-install-config:
-	@echo "Installing system configuration files..."
-	@install -D -m 644 assets/data/etc/udev/rules.d/90-dms.rules $(UDEV_RULES_DIR)/90-dms.rules
-	@echo "Reloading udev rules..."
-	@-udevadm control --reload-rules 2>/dev/null || true
-	@-udevadm trigger 2>/dev/null || true
-	@echo "Configuration installation complete"
-	@echo ""
-	@echo "Note: You may need to:"
-	@echo "  1. Add your user to the 'video' group: sudo usermod -aG video \$$USER"
-	@echo "  2. Add your user to the 'input' group: sudo usermod -aG input \$$USER"
-	@echo "  3. Load i2c-dev module: sudo modprobe i2c-dev"
-	@echo "  4. Reboot or re-login for group changes to take effect"
-
 uninstall:
 	@echo "Uninstalling $(BINARY_NAME) from $(INSTALL_DIR)..."
 	@rm -f $(INSTALL_DIR)/$(BINARY_NAME)
@@ -112,13 +93,6 @@ uninstall-dankinstall:
 	@echo "Uninstalling $(BINARY_NAME_INSTALL) from $(INSTALL_DIR)..."
 	@rm -f $(INSTALL_DIR)/$(BINARY_NAME_INSTALL)
 	@echo "Uninstall complete"
-
-uninstall-config:
-	@echo "Removing system configuration files..."
-	@rm -f $(UDEV_RULES_DIR)/90-dms.rules
-	@echo "Reloading udev rules..."
-	@-udevadm control --reload-rules 2>/dev/null || true
-	@echo "Configuration uninstall complete"
 
 clean:
 	@echo "Cleaning build artifacts..."
@@ -169,11 +143,9 @@ help:
 	@echo "  install             - Install dms to $(INSTALL_DIR)"
 	@echo "  install-all         - Install both dms and dankinstall to $(INSTALL_DIR)"
 	@echo "  install-dankinstall - Install only dankinstall to $(INSTALL_DIR)"
-	@echo "  install-config      - Install udev rules and system config (requires root)"
 	@echo "  uninstall           - Remove dms from $(INSTALL_DIR)"
 	@echo "  uninstall-all       - Remove both binaries from $(INSTALL_DIR)"
 	@echo "  uninstall-dankinstall - Remove only dankinstall from $(INSTALL_DIR)"
-	@echo "  uninstall-config    - Remove udev rules and system config (requires root)"
 	@echo "  clean               - Clean build artifacts"
 	@echo "  test                - Run tests"
 	@echo "  fmt                 - Format Go code"

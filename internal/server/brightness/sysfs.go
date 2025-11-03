@@ -17,6 +17,14 @@ func NewSysfsBackend() (*SysfsBackend, error) {
 		deviceCache: make(map[string]*sysfsDevice),
 	}
 
+	logind, err := NewLogindBackend()
+	if err != nil {
+		log.Debugf("logind backend not available: %v", err)
+	} else {
+		b.logind = logind
+		log.Debug("logind backend available for brightness control")
+	}
+
 	if err := b.scanDevices(); err != nil {
 		return nil, err
 	}
@@ -151,6 +159,15 @@ func (b *SysfsBackend) SetBrightness(id string, percent int) error {
 	class := parts[0]
 	name := parts[1]
 
+	if b.logind != nil {
+		if err := b.logind.SetBrightness(class, name, uint32(value)); err != nil {
+			log.Debugf("logind SetBrightness failed, falling back to direct write: %v", err)
+		} else {
+			log.Debugf("set %s to %d%% (%d/%d) via logind", id, percent, value, dev.maxBrightness)
+			return nil
+		}
+	}
+
 	devicePath := filepath.Join(b.basePath, class, name)
 	brightnessPath := filepath.Join(devicePath, "brightness")
 
@@ -159,7 +176,7 @@ func (b *SysfsBackend) SetBrightness(id string, percent int) error {
 		return fmt.Errorf("write brightness: %w", err)
 	}
 
-	log.Debugf("set %s to %d%% (%d/%d)", id, percent, value, dev.maxBrightness)
+	log.Debugf("set %s to %d%% (%d/%d) via direct sysfs", id, percent, value, dev.maxBrightness)
 
 	return nil
 }
