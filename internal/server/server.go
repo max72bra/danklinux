@@ -693,11 +693,13 @@ func handleSubscribe(conn net.Conn, req models.Request) {
 	}
 
 	if shouldSubscribe("brightness") && brightnessManager != nil {
-		wg.Add(1)
-		brightnessChan := brightnessManager.Subscribe(clientID + "-brightness")
+		wg.Add(2)
+		brightnessStateChan := brightnessManager.Subscribe(clientID + "-brightness-state")
+		brightnessUpdateChan := brightnessManager.SubscribeUpdates(clientID + "-brightness-updates")
+
 		go func() {
 			defer wg.Done()
-			defer brightnessManager.Unsubscribe(clientID + "-brightness")
+			defer brightnessManager.Unsubscribe(clientID + "-brightness-state")
 
 			initialState := brightnessManager.GetState()
 			select {
@@ -708,12 +710,33 @@ func handleSubscribe(conn net.Conn, req models.Request) {
 
 			for {
 				select {
-				case state, ok := <-brightnessChan:
+				case state, ok := <-brightnessStateChan:
 					if !ok {
 						return
 					}
 					select {
 					case eventChan <- ServiceEvent{Service: "brightness", Data: state}:
+					case <-stopChan:
+						return
+					}
+				case <-stopChan:
+					return
+				}
+			}
+		}()
+
+		go func() {
+			defer wg.Done()
+			defer brightnessManager.UnsubscribeUpdates(clientID + "-brightness-updates")
+
+			for {
+				select {
+				case update, ok := <-brightnessUpdateChan:
+					if !ok {
+						return
+					}
+					select {
+					case eventChan <- ServiceEvent{Service: "brightness.update", Data: update}:
 					case <-stopChan:
 						return
 					}
@@ -792,75 +815,11 @@ func Start(printDocs bool) error {
 	defer listener.Close()
 	defer cleanupManagers()
 
-	go func() {
-		if err := InitializeNetworkManager(); err != nil {
-			log.Warnf("Network manager unavailable: %v", err)
-		} else {
-			notifyCapabilityChange()
-		}
-	}()
-
-	go func() {
-		if err := InitializeLoginctlManager(); err != nil {
-			log.Warnf("Loginctl manager unavailable: %v", err)
-		} else {
-			notifyCapabilityChange()
-		}
-	}()
-
-	go func() {
-		if err := InitializeFreedeskManager(); err != nil {
-			log.Warnf("Freedesktop manager unavailable: %v", err)
-		} else if freedesktopManager != nil {
-			freedesktopManager.NotifySubscribers()
-			notifyCapabilityChange()
-		}
-	}()
-
-	if err := InitializeWaylandManager(); err != nil {
-		log.Warnf("Wayland manager unavailable: %v", err)
-	}
-
-	go func() {
-		if err := InitializeBluezManager(); err != nil {
-			log.Warnf("Bluez manager unavailable: %v", err)
-		} else {
-			notifyCapabilityChange()
-		}
-	}()
-
-	go func() {
-		if err := InitializeCupsManager(); err != nil {
-			log.Warnf("CUPS manager unavailable: %v", err)
-		} else {
-			notifyCapabilityChange()
-		}
-	}()
-
-	if err := InitializeDwlManager(); err != nil {
-		log.Debugf("DWL manager unavailable: %v", err)
-	}
-
-	go func() {
-		if err := InitializeBrightnessManager(); err != nil {
-			log.Warnf("Brightness manager unavailable: %v", err)
-		} else {
-			notifyCapabilityChange()
-		}
-	}()
-
-	if wlContext != nil {
-		wlContext.Start()
-		log.Info("Wayland event dispatcher started")
-	}
-
 	log.Infof("DMS API Server listening on: %s", socketPath)
 	log.Infof("API Version: %d", APIVersion)
 	log.Info("Protocol: JSON over Unix socket")
 	log.Info("Request format: {\"id\": <any>, \"method\": \"...\", \"params\": {...}}")
 	log.Info("Response format: {\"id\": <any>, \"result\": {...}} or {\"id\": <any>, \"error\": \"...\"}")
-	log.Info("")
-	log.Infof("Capabilities: %v", getCapabilities().Capabilities)
 	log.Info("")
 	if printDocs {
 		log.Info("Available methods:")
@@ -957,8 +916,82 @@ func Start(printDocs bool) error {
 		log.Info("Brightness:")
 		log.Info(" brightness.getState                   - Get current brightness state for all devices")
 		log.Info(" brightness.setBrightness              - Set device brightness (params: device, percent)")
+		log.Info(" brightness.increment                  - Increment device brightness (params: device, step?)")
+		log.Info(" brightness.decrement                  - Decrement device brightness (params: device, step?)")
+		log.Info(" brightness.rescan                     - Rescan for brightness devices (e.g., after plugging in monitor)")
 		log.Info(" brightness.subscribe                  - Subscribe to brightness state changes (streaming)")
+		log.Info("   Subscription events:")
+		log.Info("     - brightness       : Full device list (on rescan, DDC discovery, device changes)")
+		log.Info("     - brightness.update: Single device update (on brightness change for efficiency)")
+		log.Info("")
 	}
+	log.Info("Initializing managers...")
+	log.Info("")
+
+	go func() {
+		if err := InitializeNetworkManager(); err != nil {
+			log.Warnf("Network manager unavailable: %v", err)
+		} else {
+			notifyCapabilityChange()
+		}
+	}()
+
+	go func() {
+		if err := InitializeLoginctlManager(); err != nil {
+			log.Warnf("Loginctl manager unavailable: %v", err)
+		} else {
+			notifyCapabilityChange()
+		}
+	}()
+
+	go func() {
+		if err := InitializeFreedeskManager(); err != nil {
+			log.Warnf("Freedesktop manager unavailable: %v", err)
+		} else if freedesktopManager != nil {
+			freedesktopManager.NotifySubscribers()
+			notifyCapabilityChange()
+		}
+	}()
+
+	if err := InitializeWaylandManager(); err != nil {
+		log.Warnf("Wayland manager unavailable: %v", err)
+	}
+
+	go func() {
+		if err := InitializeBluezManager(); err != nil {
+			log.Warnf("Bluez manager unavailable: %v", err)
+		} else {
+			notifyCapabilityChange()
+		}
+	}()
+
+	go func() {
+		if err := InitializeCupsManager(); err != nil {
+			log.Warnf("CUPS manager unavailable: %v", err)
+		} else {
+			notifyCapabilityChange()
+		}
+	}()
+
+	if err := InitializeDwlManager(); err != nil {
+		log.Debugf("DWL manager unavailable: %v", err)
+	}
+
+	go func() {
+		if err := InitializeBrightnessManager(); err != nil {
+			log.Warnf("Brightness manager unavailable: %v", err)
+		} else {
+			notifyCapabilityChange()
+		}
+	}()
+
+	if wlContext != nil {
+		wlContext.Start()
+		log.Info("Wayland event dispatcher started")
+	}
+
+	log.Info("")
+	log.Infof("Ready! Capabilities: %v", getCapabilities().Capabilities)
 
 	for {
 		conn, err := listener.Accept()

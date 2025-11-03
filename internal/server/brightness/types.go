@@ -27,6 +27,10 @@ type State struct {
 	Devices []Device `json:"devices"`
 }
 
+type DeviceUpdate struct {
+	Device Device `json:"device"`
+}
+
 type Request struct {
 	ID     interface{}            `json:"id"`
 	Method string                 `json:"method"`
@@ -43,15 +47,17 @@ type Manager struct {
 	stateMutex sync.RWMutex
 	state      State
 
-	subscribers map[string]chan State
-	subMutex    sync.RWMutex
+	subscribers       map[string]chan State
+	updateSubscribers map[string]chan DeviceUpdate
+	subMutex          sync.RWMutex
 
-	debounceTimers  map[string]*time.Timer
-	debouncePending map[string]int
-	debounceMutex   sync.Mutex
+	broadcastMutex    sync.Mutex
+	broadcastTimer    *time.Timer
+	broadcastPending  bool
+	pendingDeviceID   string
+	pendingDeviceData Device
 
 	stopChan chan struct{}
-	wg       sync.WaitGroup
 }
 
 type SysfsBackend struct {
@@ -77,6 +83,10 @@ type DDCBackend struct {
 	scanMutex    sync.Mutex
 	lastScan     time.Time
 	scanInterval time.Duration
+
+	debounceMutex   sync.Mutex
+	debounceTimers  map[string]*time.Timer
+	debouncePending map[string]int
 }
 
 type ddcDevice struct {
@@ -84,6 +94,7 @@ type ddcDevice struct {
 	addr int
 	id   string
 	name string
+	max  int
 }
 
 type ddcCapability struct {
@@ -114,6 +125,23 @@ func (m *Manager) Unsubscribe(id string) {
 	m.subMutex.Unlock()
 }
 
+func (m *Manager) SubscribeUpdates(id string) chan DeviceUpdate {
+	ch := make(chan DeviceUpdate, 16)
+	m.subMutex.Lock()
+	m.updateSubscribers[id] = ch
+	m.subMutex.Unlock()
+	return ch
+}
+
+func (m *Manager) UnsubscribeUpdates(id string) {
+	m.subMutex.Lock()
+	if ch, ok := m.updateSubscribers[id]; ok {
+		close(ch)
+		delete(m.updateSubscribers, id)
+	}
+	m.subMutex.Unlock()
+}
+
 func (m *Manager) NotifySubscribers() {
 	m.stateMutex.RLock()
 	state := m.state
@@ -138,21 +166,16 @@ func (m *Manager) GetState() State {
 
 func (m *Manager) Close() {
 	close(m.stopChan)
-	m.wg.Wait()
-
-	m.debounceMutex.Lock()
-	for _, timer := range m.debounceTimers {
-		timer.Stop()
-	}
-	m.debounceTimers = make(map[string]*time.Timer)
-	m.debouncePending = make(map[string]int)
-	m.debounceMutex.Unlock()
 
 	m.subMutex.Lock()
 	for _, ch := range m.subscribers {
 		close(ch)
 	}
 	m.subscribers = make(map[string]chan State)
+	for _, ch := range m.updateSubscribers {
+		close(ch)
+	}
+	m.updateSubscribers = make(map[string]chan DeviceUpdate)
 	m.subMutex.Unlock()
 
 	if m.ddcBackend != nil {

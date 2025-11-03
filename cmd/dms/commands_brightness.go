@@ -122,12 +122,12 @@ func runBrightnessList(cmd *cobra.Command, args []string) {
 	if includeDDC {
 		ddc, err := brightness.NewDDCBackend()
 		if err != nil {
-			log.Debugf("Failed to initialize DDC backend: %v", err)
+			fmt.Printf("Warning: Failed to initialize DDC backend: %v\n", err)
 		} else {
 			time.Sleep(100 * time.Millisecond)
 			devices, err := ddc.GetDevices()
 			if err != nil {
-				log.Debugf("Failed to get DDC devices: %v", err)
+				fmt.Printf("Warning: Failed to get DDC devices: %v\n", err)
 			} else {
 				allDevices = append(allDevices, devices...)
 			}

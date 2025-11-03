@@ -84,7 +84,7 @@ install-dankinstall: dankinstall
 
 install-config:
 	@echo "Installing system configuration files..."
-	@install -D -m 644 assets/udev/99-dms.rules $(UDEV_RULES_DIR)/99-dms.rules
+	@install -D -m 644 assets/data/etc/udev/rules.d/90-dms.rules $(UDEV_RULES_DIR)/90-dms.rules
 	@install -D -m 644 assets/data/usr/lib/modules-load.d/i2c.conf $(MODULES_LOAD_DIR)/i2c.conf
 	@install -D -m 644 assets/data/etc/modprobe.d/nvidia-i2c.conf $(MODPROBE_DIR)/nvidia-i2c.conf
 	@echo "Reloading udev rules..."
@@ -117,7 +117,7 @@ uninstall-dankinstall:
 
 uninstall-config:
 	@echo "Removing system configuration files..."
-	@rm -f $(UDEV_RULES_DIR)/99-dms.rules
+	@rm -f $(UDEV_RULES_DIR)/90-dms.rules
 	@rm -f $(MODULES_LOAD_DIR)/i2c.conf
 	@rm -f $(MODPROBE_DIR)/nvidia-i2c.conf
 	@echo "Reloading udev rules..."

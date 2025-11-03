@@ -13,6 +13,12 @@ func HandleRequest(conn net.Conn, req Request, m *Manager) {
 		handleGetState(conn, req, m)
 	case "brightness.setBrightness":
 		handleSetBrightness(conn, req, m)
+	case "brightness.increment":
+		handleIncrement(conn, req, m)
+	case "brightness.decrement":
+		handleDecrement(conn, req, m)
+	case "brightness.rescan":
+		handleRescan(conn, req, m)
 	case "brightness.subscribe":
 		handleSubscribe(conn, req, m)
 	default:
@@ -47,6 +53,54 @@ func handleSetBrightness(conn net.Conn, req Request, m *Manager) {
 		return
 	}
 
+	state := m.GetState()
+	models.Respond(conn, req.ID.(int), state)
+}
+
+func handleIncrement(conn net.Conn, req Request, m *Manager) {
+	device, ok := req.Params["device"].(string)
+	if !ok {
+		models.RespondError(conn, req.ID.(int), "missing or invalid device parameter")
+		return
+	}
+
+	step := 10
+	if stepFloat, ok := req.Params["step"].(float64); ok {
+		step = int(stepFloat)
+	}
+
+	if err := m.IncrementBrightness(device, step); err != nil {
+		models.RespondError(conn, req.ID.(int), err.Error())
+		return
+	}
+
+	state := m.GetState()
+	models.Respond(conn, req.ID.(int), state)
+}
+
+func handleDecrement(conn net.Conn, req Request, m *Manager) {
+	device, ok := req.Params["device"].(string)
+	if !ok {
+		models.RespondError(conn, req.ID.(int), "missing or invalid device parameter")
+		return
+	}
+
+	step := 10
+	if stepFloat, ok := req.Params["step"].(float64); ok {
+		step = int(stepFloat)
+	}
+
+	if err := m.DecrementBrightness(device, step); err != nil {
+		models.RespondError(conn, req.ID.(int), err.Error())
+		return
+	}
+
+	state := m.GetState()
+	models.Respond(conn, req.ID.(int), state)
+}
+
+func handleRescan(conn net.Conn, req Request, m *Manager) {
+	m.Rescan()
 	state := m.GetState()
 	models.Respond(conn, req.ID.(int), state)
 }

@@ -11,20 +11,24 @@ import (
 	"unsafe"
 
 	"github.com/AvengeMedia/danklinux/internal/log"
+	"golang.org/x/sys/unix"
 )
 
 const (
-	I2C_SLAVE      = 0x0703
-	DDCCI_ADDR     = 0x37
-	DDCCI_VCP_GET  = 0x01
-	DDCCI_VCP_SET  = 0x03
-	VCP_BRIGHTNESS = 0x10
+	I2C_SLAVE       = 0x0703
+	DDCCI_ADDR      = 0x37
+	DDCCI_VCP_GET   = 0x01
+	DDCCI_VCP_SET   = 0x03
+	VCP_BRIGHTNESS  = 0x10
+	DDC_SOURCE_ADDR = 0x51
 )
 
 func NewDDCBackend() (*DDCBackend, error) {
 	b := &DDCBackend{
-		devices:      make(map[string]*ddcDevice),
-		scanInterval: 30 * time.Second,
+		devices:         make(map[string]*ddcDevice),
+		scanInterval:    30 * time.Second,
+		debounceTimers:  make(map[string]*time.Timer),
+		debouncePending: make(map[string]int),
 	}
 
 	if err := b.scanI2CDevices(); err != nil {
@@ -79,13 +83,17 @@ func (b *DDCBackend) probeDDCDevice(bus int) (*ddcDevice, error) {
 		return nil, errno
 	}
 
-	cap, err := b.getVCPFeature(fd, VCP_BRIGHTNESS)
-	if err != nil {
-		return nil, err
-	}
+	dummy := make([]byte, 32)
+	syscall.Read(fd, dummy)
 
-	if cap.max == 0 {
-		return nil, fmt.Errorf("invalid max brightness")
+	writebuf := []byte{0x00}
+	n, err := syscall.Write(fd, writebuf)
+	if err != nil || n != len(writebuf) {
+		readbuf := make([]byte, 4)
+		n, err = syscall.Read(fd, readbuf)
+		if err != nil || n == 0 {
+			return nil, fmt.Errorf("x37 unresponsive")
+		}
 	}
 
 	name := b.getDDCName(bus)
@@ -137,12 +145,26 @@ func (b *DDCBackend) GetDevices() ([]Device, error) {
 			continue
 		}
 
-		cap, err := b.getVCPFeature(fd, VCP_BRIGHTNESS)
+		var cap *ddcCapability
+		var vcpErr error
+		for retry := 0; retry < 2; retry++ {
+			cap, vcpErr = b.getVCPFeature(fd, VCP_BRIGHTNESS)
+			if vcpErr == nil {
+				break
+			}
+			if retry < 1 {
+				time.Sleep(100 * time.Millisecond)
+			}
+		}
 		syscall.Close(fd)
 
-		if err != nil {
-			log.Debugf("failed to get brightness for %s: %v", id, err)
+		if vcpErr != nil {
+			log.Debugf("failed to get brightness for %s after retries: %v", id, vcpErr)
 			continue
+		}
+
+		if dev.max == 0 {
+			dev.max = cap.max
 		}
 
 		percent := b.valueToPercent(cap.current, cap.max)
@@ -163,15 +185,53 @@ func (b *DDCBackend) GetDevices() ([]Device, error) {
 
 func (b *DDCBackend) SetBrightness(id string, percent int) error {
 	b.devicesMutex.RLock()
-	dev, ok := b.devices[id]
+	_, ok := b.devices[id]
 	b.devicesMutex.RUnlock()
 
 	if !ok {
 		return fmt.Errorf("device not found: %s", id)
 	}
 
-	if percent < 1 || percent > 100 {
+	if percent < 0 || percent > 100 {
 		return fmt.Errorf("percent out of range: %d", percent)
+	}
+
+	b.debounceMutex.Lock()
+	defer b.debounceMutex.Unlock()
+
+	b.debouncePending[id] = percent
+
+	if timer, exists := b.debounceTimers[id]; exists {
+		timer.Stop()
+	}
+
+	b.debounceTimers[id] = time.AfterFunc(200*time.Millisecond, func() {
+		b.debounceMutex.Lock()
+		pendingPercent, exists := b.debouncePending[id]
+		if exists {
+			delete(b.debouncePending, id)
+		}
+		b.debounceMutex.Unlock()
+
+		if !exists {
+			return
+		}
+
+		if err := b.setBrightnessImmediate(id, pendingPercent); err != nil {
+			log.Debugf("Failed to set brightness for %s: %v", id, err)
+		}
+	})
+
+	return nil
+}
+
+func (b *DDCBackend) setBrightnessImmediate(id string, percent int) error {
+	b.devicesMutex.RLock()
+	dev, ok := b.devices[id]
+	b.devicesMutex.RUnlock()
+
+	if !ok {
+		return fmt.Errorf("device not found: %s", id)
 	}
 
 	busPath := fmt.Sprintf("/dev/i2c-%d", dev.bus)
@@ -186,42 +246,76 @@ func (b *DDCBackend) SetBrightness(id string, percent int) error {
 		return fmt.Errorf("set i2c slave addr: %w", errno)
 	}
 
-	cap, err := b.getVCPFeature(fd, VCP_BRIGHTNESS)
-	if err != nil {
-		return fmt.Errorf("get current brightness: %w", err)
+	max := dev.max
+	if max == 0 {
+		cap, err := b.getVCPFeature(fd, VCP_BRIGHTNESS)
+		if err != nil {
+			return fmt.Errorf("get current capability: %w", err)
+		}
+		max = cap.max
+		b.devicesMutex.Lock()
+		dev.max = max
+		b.devicesMutex.Unlock()
 	}
 
-	value := b.percentToValue(percent, cap.max)
+	value := b.percentToValue(percent, max)
 
 	if err := b.setVCPFeature(fd, VCP_BRIGHTNESS, value); err != nil {
 		return fmt.Errorf("set vcp feature: %w", err)
 	}
 
-	log.Debugf("set %s to %d%% (%d/%d)", id, percent, value, cap.max)
+	log.Debugf("set %s to %d%% (value=%d/%d)", id, percent, value, max)
 
 	return nil
 }
 
 func (b *DDCBackend) getVCPFeature(fd int, vcp byte) (*ddcCapability, error) {
-	request := []byte{
-		0x6E | 0x80,
-		0x51,
-		0x82,
+	for flushTry := 0; flushTry < 3; flushTry++ {
+		dummy := make([]byte, 32)
+		n, _ := syscall.Read(fd, dummy)
+		if n == 0 {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	data := []byte{
+		DDCCI_VCP_GET,
 		vcp,
 	}
 
-	checksum := byte(DDCCI_ADDR << 1)
-	for _, b := range request {
-		checksum ^= b
+	payload := []byte{
+		DDC_SOURCE_ADDR,
+		byte(len(data)) | 0x80,
 	}
-	request = append(request, checksum)
+	payload = append(payload, data...)
+	payload = append(payload, ddcciChecksum(payload))
 
-	n, err := syscall.Write(fd, request)
-	if err != nil || n != len(request) {
+	n, err := syscall.Write(fd, payload)
+	if err != nil || n != len(payload) {
 		return nil, fmt.Errorf("write i2c: %w", err)
 	}
 
-	time.Sleep(40 * time.Millisecond)
+	time.Sleep(50 * time.Millisecond)
+
+	pollFds := []unix.PollFd{
+		{
+			Fd:     int32(fd),
+			Events: unix.POLLIN,
+		},
+	}
+
+	pollTimeout := 200
+	pollResult, err := unix.Poll(pollFds, pollTimeout)
+	if err != nil {
+		return nil, fmt.Errorf("poll i2c: %w", err)
+	}
+	if pollResult == 0 {
+		return nil, fmt.Errorf("poll timeout after %dms", pollTimeout)
+	}
+	if pollFds[0].Revents&unix.POLLIN == 0 {
+		return nil, fmt.Errorf("poll returned but POLLIN not set")
+	}
 
 	response := make([]byte, 12)
 	n, err = syscall.Read(fd, response)
@@ -240,13 +334,13 @@ func (b *DDCBackend) getVCPFeature(fd int, vcp byte) (*ddcCapability, error) {
 
 	responseVCP := response[4]
 	if responseVCP != vcp {
-		return nil, fmt.Errorf("vcp mismatch")
+		return nil, fmt.Errorf("vcp mismatch: wanted 0x%02x, got 0x%02x", vcp, responseVCP)
 	}
 
-	maxHigh := response[5]
-	maxLow := response[6]
-	currentHigh := response[7]
-	currentLow := response[8]
+	maxHigh := response[6]
+	maxLow := response[7]
+	currentHigh := response[8]
+	currentLow := response[9]
 
 	max := int(binary.BigEndian.Uint16([]byte{maxHigh, maxLow}))
 	current := int(binary.BigEndian.Uint16([]byte{currentHigh, currentLow}))
@@ -258,31 +352,39 @@ func (b *DDCBackend) getVCPFeature(fd int, vcp byte) (*ddcCapability, error) {
 	}, nil
 }
 
+func ddcciChecksum(payload []byte) byte {
+	sum := byte(0x6E)
+	for _, b := range payload {
+		sum ^= b
+	}
+	return sum
+}
+
 func (b *DDCBackend) setVCPFeature(fd int, vcp byte, value int) error {
-	valueHigh := byte((value >> 8) & 0xFF)
-	valueLow := byte(value & 0xFF)
-
-	request := []byte{
-		0x6E | 0x80,
-		0x51,
-		0x84,
+	data := []byte{
+		DDCCI_VCP_SET,
 		vcp,
-		valueHigh,
-		valueLow,
+		byte(value >> 8),
+		byte(value & 0xFF),
 	}
 
-	checksum := byte(DDCCI_ADDR << 1)
-	for _, b := range request {
-		checksum ^= b
+	payload := []byte{
+		DDC_SOURCE_ADDR,
+		byte(len(data)) | 0x80,
 	}
-	request = append(request, checksum)
+	payload = append(payload, data...)
+	payload = append(payload, ddcciChecksum(payload))
 
-	n, err := syscall.Write(fd, request)
-	if err != nil || n != len(request) {
-		return fmt.Errorf("write i2c: %w", err)
+	if _, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(fd), I2C_SLAVE, uintptr(DDCCI_ADDR)); errno != 0 {
+		return fmt.Errorf("set i2c slave for write: %w", errno)
 	}
 
-	time.Sleep(40 * time.Millisecond)
+	n, err := syscall.Write(fd, payload)
+	if err != nil || n != len(payload) {
+		return fmt.Errorf("write i2c: wrote %d/%d: %w", n, len(payload), err)
+	}
+
+	time.Sleep(50 * time.Millisecond)
 
 	return nil
 }
@@ -290,8 +392,14 @@ func (b *DDCBackend) setVCPFeature(fd int, vcp byte, value int) error {
 func (b *DDCBackend) percentToValue(percent int, max int) int {
 	const minValue = 1
 
+	// DDC devices must stay at minimum 1
+	if percent == 0 {
+		return minValue
+	}
+
+	// Map 1-100% to minValue-max range
 	usableRange := max - minValue
-	value := minValue + (percent * usableRange / 100)
+	value := minValue + ((percent - 1) * usableRange / 99)
 
 	if value < minValue {
 		value = minValue
@@ -306,16 +414,22 @@ func (b *DDCBackend) percentToValue(percent int, max int) int {
 func (b *DDCBackend) valueToPercent(value int, max int) int {
 	const minValue = 1
 
+	if max == 0 {
+		return 0
+	}
+
+	// Handle minimum value
 	if value <= minValue {
 		return 1
 	}
 
+	// Map minValue-max range to 1-100%
 	usableRange := max - minValue
 	if usableRange == 0 {
 		return 100
 	}
 
-	percent := ((value - minValue) * 100) / usableRange
+	percent := 1 + ((value - minValue) * 99 / usableRange)
 
 	if percent > 100 {
 		percent = 100

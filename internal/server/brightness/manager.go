@@ -10,17 +10,13 @@ import (
 
 func NewManager() (*Manager, error) {
 	m := &Manager{
-		subscribers:     make(map[string]chan State),
-		debounceTimers:  make(map[string]*time.Timer),
-		debouncePending: make(map[string]int),
-		stopChan:        make(chan struct{}),
+		subscribers:       make(map[string]chan State),
+		updateSubscribers: make(map[string]chan DeviceUpdate),
+		stopChan:          make(chan struct{}),
 	}
 
 	go m.initSysfs()
 	go m.initDDC()
-
-	m.wg.Add(1)
-	go m.pollLoop()
 
 	return m, nil
 }
@@ -63,20 +59,9 @@ func (m *Manager) initDDC() {
 	m.updateState()
 }
 
-func (m *Manager) pollLoop() {
-	defer m.wg.Done()
-
-	ticker := time.NewTicker(5 * time.Second)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-m.stopChan:
-			return
-		case <-ticker.C:
-			m.updateState()
-		}
-	}
+func (m *Manager) Rescan() {
+	log.Debug("Rescanning brightness devices...")
+	m.updateState()
 }
 
 func sortDevices(devices []Device) {
@@ -151,6 +136,7 @@ func (m *Manager) updateState() {
 	if stateChanged(oldState, newState) {
 		m.state = newState
 		m.stateMutex.Unlock()
+		log.Debugf("State changed, notifying subscribers")
 		m.NotifySubscribers()
 	} else {
 		m.stateMutex.Unlock()
@@ -162,72 +148,146 @@ func (m *Manager) SetBrightness(deviceID string, percent int) error {
 		return fmt.Errorf("percent out of range: %d", percent)
 	}
 
-	isDDC := false
-	isSysfs := false
+	log.Debugf("SetBrightness: %s to %d%%", deviceID, percent)
 
-	if m.sysfsBackend != nil {
-		devices, _ := m.sysfsBackend.GetDevices()
-		for _, dev := range devices {
-			if dev.ID == deviceID {
-				isSysfs = true
-				break
-			}
+	m.stateMutex.Lock()
+	currentState := m.state
+	var found bool
+	var deviceClass DeviceClass
+	var deviceIndex int
+
+	log.Debugf("Current state has %d devices", len(currentState.Devices))
+
+	for i, dev := range currentState.Devices {
+		if dev.ID == deviceID {
+			found = true
+			deviceClass = dev.Class
+			deviceIndex = i
+			break
 		}
 	}
 
-	if !isSysfs && m.ddcBackend != nil {
-		devices, _ := m.ddcBackend.GetDevices()
-		for _, dev := range devices {
-			if dev.ID == deviceID {
-				isDDC = true
-				break
-			}
-		}
-	}
-
-	if !isSysfs && !isDDC {
+	if !found {
+		m.stateMutex.Unlock()
+		log.Debugf("Device not found in state: %s", deviceID)
 		return fmt.Errorf("device not found: %s", deviceID)
 	}
 
-	debounceDelay := 50 * time.Millisecond
-	if isDDC {
-		debounceDelay = 200 * time.Millisecond
+	log.Debugf("Updating cached state for %s from %d%% to %d%%", deviceID, m.state.Devices[deviceIndex].CurrentPercent, percent)
+	m.state.Devices[deviceIndex].CurrentPercent = percent
+	m.stateMutex.Unlock()
+
+	var err error
+	if deviceClass == ClassDDC {
+		log.Debugf("Calling DDC backend for %s", deviceID)
+		err = m.ddcBackend.SetBrightness(deviceID, percent)
+	} else {
+		log.Debugf("Calling sysfs backend for %s", deviceID)
+		err = m.sysfsBackend.SetBrightness(deviceID, percent)
 	}
 
-	m.debounceMutex.Lock()
-	defer m.debounceMutex.Unlock()
-
-	m.debouncePending[deviceID] = percent
-
-	if timer, exists := m.debounceTimers[deviceID]; exists {
-		timer.Stop()
+	if err != nil {
+		return fmt.Errorf("failed to set brightness: %w", err)
 	}
 
-	m.debounceTimers[deviceID] = time.AfterFunc(debounceDelay, func() {
-		m.debounceMutex.Lock()
-		pendingPercent, exists := m.debouncePending[deviceID]
-		if exists {
-			delete(m.debouncePending, deviceID)
-		}
-		m.debounceMutex.Unlock()
-
-		if !exists {
-			return
-		}
-
-		var err error
-		if isSysfs {
-			err = m.sysfsBackend.SetBrightness(deviceID, pendingPercent)
-		} else if isDDC {
-			err = m.ddcBackend.SetBrightness(deviceID, pendingPercent)
-		}
-
-		if err != nil {
-			log.Debugf("Failed to set brightness for %s: %v", deviceID, err)
-		}
-
-		m.updateState()
-	})
-
+	log.Debugf("Queueing broadcast for %s", deviceID)
+	m.debouncedBroadcast(deviceID, deviceClass, percent)
 	return nil
+}
+
+func (m *Manager) IncrementBrightness(deviceID string, step int) error {
+	m.stateMutex.RLock()
+	currentState := m.state
+	m.stateMutex.RUnlock()
+
+	var currentPercent int
+	var found bool
+
+	for _, dev := range currentState.Devices {
+		if dev.ID == deviceID {
+			currentPercent = dev.CurrentPercent
+			found = true
+			break
+		}
+	}
+
+	if !found {
+		return fmt.Errorf("device not found: %s", deviceID)
+	}
+
+	newPercent := currentPercent + step
+	if newPercent > 100 {
+		newPercent = 100
+	}
+	if newPercent < 0 {
+		newPercent = 0
+	}
+
+	return m.SetBrightness(deviceID, newPercent)
+}
+
+func (m *Manager) DecrementBrightness(deviceID string, step int) error {
+	return m.IncrementBrightness(deviceID, -step)
+}
+
+func (m *Manager) debouncedBroadcast(deviceID string, deviceClass DeviceClass, percent int) {
+	m.broadcastMutex.Lock()
+	defer m.broadcastMutex.Unlock()
+
+	m.broadcastPending = true
+	m.pendingDeviceID = deviceID
+
+	if m.broadcastTimer != nil {
+		m.broadcastTimer.Stop()
+	}
+
+	m.broadcastTimer = time.AfterFunc(150*time.Millisecond, func() {
+		m.broadcastMutex.Lock()
+		pending := m.broadcastPending
+		deviceID := m.pendingDeviceID
+		m.broadcastPending = false
+		m.pendingDeviceID = ""
+		m.broadcastMutex.Unlock()
+
+		if pending && deviceID != "" {
+			m.broadcastDeviceUpdate(deviceID)
+		}
+	})
+}
+
+func (m *Manager) broadcastDeviceUpdate(deviceID string) {
+	m.stateMutex.RLock()
+	var targetDevice *Device
+	for _, dev := range m.state.Devices {
+		if dev.ID == deviceID {
+			devCopy := dev
+			targetDevice = &devCopy
+			break
+		}
+	}
+	m.stateMutex.RUnlock()
+
+	if targetDevice == nil {
+		log.Debugf("Device not found for broadcast: %s", deviceID)
+		return
+	}
+
+	update := DeviceUpdate{Device: *targetDevice}
+
+	m.subMutex.RLock()
+	defer m.subMutex.RUnlock()
+
+	if len(m.updateSubscribers) == 0 {
+		log.Debugf("No update subscribers for device: %s", deviceID)
+		return
+	}
+
+	log.Debugf("Broadcasting device update: %s at %d%%", deviceID, targetDevice.CurrentPercent)
+
+	for _, ch := range m.updateSubscribers {
+		select {
+		case ch <- update:
+		default:
+		}
+	}
 }

@@ -165,12 +165,14 @@ func (b *SysfsBackend) SetBrightness(id string, percent int) error {
 }
 
 func (b *SysfsBackend) percentToValue(percent int, dev *sysfsDevice) int {
-	if percent == 0 && dev.minValue == 0 {
-		return 0
+	// LEDs can go to 0, backlight devices must stay at minimum 1
+	if percent == 0 {
+		return dev.minValue
 	}
 
+	// Map 1-100% to minValue-maxBrightness range
 	usableRange := dev.maxBrightness - dev.minValue
-	value := dev.minValue + (percent * usableRange / 100)
+	value := dev.minValue + ((percent - 1) * usableRange / 99)
 
 	if value < dev.minValue {
 		value = dev.minValue
@@ -183,6 +185,7 @@ func (b *SysfsBackend) percentToValue(percent int, dev *sysfsDevice) int {
 }
 
 func (b *SysfsBackend) valueToPercent(value int, dev *sysfsDevice) int {
+	// Handle minimum values
 	if value <= dev.minValue {
 		if dev.minValue == 0 && value == 0 {
 			return 0
@@ -190,15 +193,19 @@ func (b *SysfsBackend) valueToPercent(value int, dev *sysfsDevice) int {
 		return 1
 	}
 
+	// Map minValue-maxBrightness range to 1-100%
 	usableRange := dev.maxBrightness - dev.minValue
 	if usableRange == 0 {
 		return 100
 	}
 
-	percent := ((value - dev.minValue) * 100) / usableRange
+	percent := 1 + ((value - dev.minValue) * 99 / usableRange)
 
 	if percent > 100 {
 		percent = 100
+	}
+	if percent < 1 {
+		percent = 1
 	}
 
 	return percent
