@@ -238,6 +238,7 @@ func (f *FedoraDistribution) getPrerequisites() []string {
 		"dnf-plugins-core",
 		"make",
 		"unzip",
+		"libwayland-server",
 	}
 }
 
