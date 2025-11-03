@@ -340,3 +340,19 @@ func uninstallPluginCLI(idOrName string) error {
 	fmt.Printf("Plugin uninstalled successfully: %s\n", plugin.Name)
 	return nil
 }
+
+// getCommonCommands returns the commands available in all builds
+func getCommonCommands() []*cobra.Command {
+	return []*cobra.Command{
+		versionCmd,
+		runCmd,
+		restartCmd,
+		killCmd,
+		ipcCmd,
+		debugSrvCmd,
+		pluginsCmd,
+		dank16Cmd,
+		brightnessCmd,
+		hyprlandCmd,
+	}
+}

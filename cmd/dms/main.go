@@ -25,8 +25,12 @@ func init() {
 	// Add subcommands to plugins
 	pluginsCmd.AddCommand(pluginsBrowseCmd, pluginsListCmd, pluginsInstallCmd, pluginsUninstallCmd)
 
-	// Add commands to root
-	rootCmd.AddCommand(versionCmd, runCmd, restartCmd, killCmd, ipcCmd, updateCmd, greeterCmd, debugSrvCmd, pluginsCmd, dank16Cmd, hyprlandCmd, brightnessCmd)
+	// Add common commands to root
+	rootCmd.AddCommand(getCommonCommands()...)
+
+	// Add non-distro specific commands
+	rootCmd.AddCommand(updateCmd, greeterCmd)
+
 	rootCmd.SetHelpTemplate(getHelpTemplate())
 }
 
