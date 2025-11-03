@@ -83,18 +83,26 @@ func (cd *ConfigDeployer) DeployConfigurationsSelectiveWithReinstalls(ctx contex
 	switch terminal {
 	case deps.TerminalGhostty:
 		if shouldReplaceConfig("Ghostty") {
-			ghosttyResult, err := cd.deployGhosttyConfig()
-			results = append(results, ghosttyResult)
+			ghosttyResults, err := cd.deployGhosttyConfig()
+			results = append(results, ghosttyResults...)
 			if err != nil {
 				return results, fmt.Errorf("failed to deploy Ghostty config: %w", err)
 			}
 		}
 	case deps.TerminalKitty:
 		if shouldReplaceConfig("Kitty") {
-			kittyResult, err := cd.deployKittyConfig()
-			results = append(results, kittyResult)
+			kittyResults, err := cd.deployKittyConfig()
+			results = append(results, kittyResults...)
 			if err != nil {
 				return results, fmt.Errorf("failed to deploy Kitty config: %w", err)
+			}
+		}
+	case deps.TerminalAlacritty:
+		if shouldReplaceConfig("Alacritty") {
+			alacrittyResults, err := cd.deployAlacrittyConfig()
+			results = append(results, alacrittyResults...)
+			if err != nil {
+				return results, fmt.Errorf("failed to deploy Alacritty config: %w", err)
 			}
 		}
 	}
@@ -179,86 +187,192 @@ func (cd *ConfigDeployer) deployNiriConfig(terminal deps.Terminal) (DeploymentRe
 	return result, nil
 }
 
-// deployGhosttyConfig handles Ghostty configuration deployment with backup
-func (cd *ConfigDeployer) deployGhosttyConfig() (DeploymentResult, error) {
-	result := DeploymentResult{
+func (cd *ConfigDeployer) deployGhosttyConfig() ([]DeploymentResult, error) {
+	var results []DeploymentResult
+
+	mainResult := DeploymentResult{
 		ConfigType: "Ghostty",
 		Path:       filepath.Join(os.Getenv("HOME"), ".config", "ghostty", "config"),
 	}
 
-	configDir := filepath.Dir(result.Path)
+	configDir := filepath.Dir(mainResult.Path)
 	if err := os.MkdirAll(configDir, 0755); err != nil {
-		result.Error = fmt.Errorf("failed to create config directory: %w", err)
-		return result, result.Error
+		mainResult.Error = fmt.Errorf("failed to create config directory: %w", err)
+		return []DeploymentResult{mainResult}, mainResult.Error
 	}
 
-	if _, err := os.Stat(result.Path); err == nil {
+	if _, err := os.Stat(mainResult.Path); err == nil {
 		cd.log("Found existing Ghostty configuration")
 
-		existingData, err := os.ReadFile(result.Path)
+		existingData, err := os.ReadFile(mainResult.Path)
 		if err != nil {
-			result.Error = fmt.Errorf("failed to read existing config: %w", err)
-			return result, result.Error
+			mainResult.Error = fmt.Errorf("failed to read existing config: %w", err)
+			return []DeploymentResult{mainResult}, mainResult.Error
 		}
 
 		timestamp := time.Now().Format("2006-01-02_15-04-05")
-		result.BackupPath = result.Path + ".backup." + timestamp
-		if err := os.WriteFile(result.BackupPath, existingData, 0644); err != nil {
-			result.Error = fmt.Errorf("failed to create backup: %w", err)
-			return result, result.Error
+		mainResult.BackupPath = mainResult.Path + ".backup." + timestamp
+		if err := os.WriteFile(mainResult.BackupPath, existingData, 0644); err != nil {
+			mainResult.Error = fmt.Errorf("failed to create backup: %w", err)
+			return []DeploymentResult{mainResult}, mainResult.Error
 		}
-		cd.log(fmt.Sprintf("Backed up existing config to %s", result.BackupPath))
+		cd.log(fmt.Sprintf("Backed up existing config to %s", mainResult.BackupPath))
 	}
 
-	if err := os.WriteFile(result.Path, []byte(GhosttyConfig), 0644); err != nil {
-		result.Error = fmt.Errorf("failed to write config: %w", err)
-		return result, result.Error
+	if err := os.WriteFile(mainResult.Path, []byte(GhosttyConfig), 0644); err != nil {
+		mainResult.Error = fmt.Errorf("failed to write config: %w", err)
+		return []DeploymentResult{mainResult}, mainResult.Error
 	}
 
-	result.Deployed = true
+	mainResult.Deployed = true
 	cd.log("Successfully deployed Ghostty configuration")
-	return result, nil
+	results = append(results, mainResult)
+
+	colorResult := DeploymentResult{
+		ConfigType: "Ghostty Colors",
+		Path:       filepath.Join(os.Getenv("HOME"), ".config", "ghostty", "config-dankcolors"),
+	}
+
+	if err := os.WriteFile(colorResult.Path, []byte(GhosttyColorConfig), 0644); err != nil {
+		colorResult.Error = fmt.Errorf("failed to write color config: %w", err)
+		return results, colorResult.Error
+	}
+
+	colorResult.Deployed = true
+	cd.log("Successfully deployed Ghostty color configuration")
+	results = append(results, colorResult)
+
+	return results, nil
 }
 
-// deployKittyConfig handles Kitty configuration deployment with backup
-func (cd *ConfigDeployer) deployKittyConfig() (DeploymentResult, error) {
-	result := DeploymentResult{
+func (cd *ConfigDeployer) deployKittyConfig() ([]DeploymentResult, error) {
+	var results []DeploymentResult
+
+	mainResult := DeploymentResult{
 		ConfigType: "Kitty",
 		Path:       filepath.Join(os.Getenv("HOME"), ".config", "kitty", "kitty.conf"),
 	}
 
-	configDir := filepath.Dir(result.Path)
+	configDir := filepath.Dir(mainResult.Path)
 	if err := os.MkdirAll(configDir, 0755); err != nil {
-		result.Error = fmt.Errorf("failed to create config directory: %w", err)
-		return result, result.Error
+		mainResult.Error = fmt.Errorf("failed to create config directory: %w", err)
+		return []DeploymentResult{mainResult}, mainResult.Error
 	}
 
-	if _, err := os.Stat(result.Path); err == nil {
+	if _, err := os.Stat(mainResult.Path); err == nil {
 		cd.log("Found existing Kitty configuration")
 
-		existingData, err := os.ReadFile(result.Path)
+		existingData, err := os.ReadFile(mainResult.Path)
 		if err != nil {
-			result.Error = fmt.Errorf("failed to read existing config: %w", err)
-			return result, result.Error
+			mainResult.Error = fmt.Errorf("failed to read existing config: %w", err)
+			return []DeploymentResult{mainResult}, mainResult.Error
 		}
 
 		timestamp := time.Now().Format("2006-01-02_15-04-05")
-		result.BackupPath = result.Path + ".backup." + timestamp
-		if err := os.WriteFile(result.BackupPath, existingData, 0644); err != nil {
-			result.Error = fmt.Errorf("failed to create backup: %w", err)
-			return result, result.Error
+		mainResult.BackupPath = mainResult.Path + ".backup." + timestamp
+		if err := os.WriteFile(mainResult.BackupPath, existingData, 0644); err != nil {
+			mainResult.Error = fmt.Errorf("failed to create backup: %w", err)
+			return []DeploymentResult{mainResult}, mainResult.Error
 		}
-		cd.log(fmt.Sprintf("Backed up existing config to %s", result.BackupPath))
+		cd.log(fmt.Sprintf("Backed up existing config to %s", mainResult.BackupPath))
 	}
 
-	if err := os.WriteFile(result.Path, []byte(KittyConfig), 0644); err != nil {
-		result.Error = fmt.Errorf("failed to write config: %w", err)
-		return result, result.Error
+	if err := os.WriteFile(mainResult.Path, []byte(KittyConfig), 0644); err != nil {
+		mainResult.Error = fmt.Errorf("failed to write config: %w", err)
+		return []DeploymentResult{mainResult}, mainResult.Error
 	}
 
-	result.Deployed = true
+	mainResult.Deployed = true
 	cd.log("Successfully deployed Kitty configuration")
-	return result, nil
+	results = append(results, mainResult)
+
+	themeResult := DeploymentResult{
+		ConfigType: "Kitty Theme",
+		Path:       filepath.Join(os.Getenv("HOME"), ".config", "kitty", "dank-theme.conf"),
+	}
+
+	if err := os.WriteFile(themeResult.Path, []byte(KittyThemeConfig), 0644); err != nil {
+		themeResult.Error = fmt.Errorf("failed to write theme config: %w", err)
+		return results, themeResult.Error
+	}
+
+	themeResult.Deployed = true
+	cd.log("Successfully deployed Kitty theme configuration")
+	results = append(results, themeResult)
+
+	tabsResult := DeploymentResult{
+		ConfigType: "Kitty Tabs",
+		Path:       filepath.Join(os.Getenv("HOME"), ".config", "kitty", "dank-tabs.conf"),
+	}
+
+	if err := os.WriteFile(tabsResult.Path, []byte(KittyTabsConfig), 0644); err != nil {
+		tabsResult.Error = fmt.Errorf("failed to write tabs config: %w", err)
+		return results, tabsResult.Error
+	}
+
+	tabsResult.Deployed = true
+	cd.log("Successfully deployed Kitty tabs configuration")
+	results = append(results, tabsResult)
+
+	return results, nil
+}
+
+func (cd *ConfigDeployer) deployAlacrittyConfig() ([]DeploymentResult, error) {
+	var results []DeploymentResult
+
+	mainResult := DeploymentResult{
+		ConfigType: "Alacritty",
+		Path:       filepath.Join(os.Getenv("HOME"), ".config", "alacritty", "alacritty.toml"),
+	}
+
+	configDir := filepath.Dir(mainResult.Path)
+	if err := os.MkdirAll(configDir, 0755); err != nil {
+		mainResult.Error = fmt.Errorf("failed to create config directory: %w", err)
+		return []DeploymentResult{mainResult}, mainResult.Error
+	}
+
+	if _, err := os.Stat(mainResult.Path); err == nil {
+		cd.log("Found existing Alacritty configuration")
+
+		existingData, err := os.ReadFile(mainResult.Path)
+		if err != nil {
+			mainResult.Error = fmt.Errorf("failed to read existing config: %w", err)
+			return []DeploymentResult{mainResult}, mainResult.Error
+		}
+
+		timestamp := time.Now().Format("2006-01-02_15-04-05")
+		mainResult.BackupPath = mainResult.Path + ".backup." + timestamp
+		if err := os.WriteFile(mainResult.BackupPath, existingData, 0644); err != nil {
+			mainResult.Error = fmt.Errorf("failed to create backup: %w", err)
+			return []DeploymentResult{mainResult}, mainResult.Error
+		}
+		cd.log(fmt.Sprintf("Backed up existing config to %s", mainResult.BackupPath))
+	}
+
+	if err := os.WriteFile(mainResult.Path, []byte(AlacrittyConfig), 0644); err != nil {
+		mainResult.Error = fmt.Errorf("failed to write config: %w", err)
+		return []DeploymentResult{mainResult}, mainResult.Error
+	}
+
+	mainResult.Deployed = true
+	cd.log("Successfully deployed Alacritty configuration")
+	results = append(results, mainResult)
+
+	themeResult := DeploymentResult{
+		ConfigType: "Alacritty Theme",
+		Path:       filepath.Join(os.Getenv("HOME"), ".config", "alacritty", "dank-theme.toml"),
+	}
+
+	if err := os.WriteFile(themeResult.Path, []byte(AlacrittyThemeConfig), 0644); err != nil {
+		themeResult.Error = fmt.Errorf("failed to write theme config: %w", err)
+		return results, themeResult.Error
+	}
+
+	themeResult.Deployed = true
+	cd.log("Successfully deployed Alacritty theme configuration")
+	results = append(results, themeResult)
+
+	return results, nil
 }
 
 // detectPolkitAgent tries to find the polkit authentication agent on the system

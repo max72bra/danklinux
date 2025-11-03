@@ -90,5 +90,153 @@ tab_bar_align left
 shell_integration enabled
 
 # Dank color generation
+include dank-tabs.conf
 include dank-theme.conf
+`
+
+const AlacrittyConfig = `[general]
+import = [
+  "~/.config/alacritty/dank-theme.toml"
+]
+
+[window]
+decorations = "None"
+padding = { x = 12, y = 12 }
+opacity = 1.0
+
+[scrolling]
+history = 3023
+
+[cursor]
+style = { shape = "Block", blinking = "On" }
+blink_interval = 500
+unfocused_hollow = true
+
+[mouse]
+hide_when_typing = true
+
+[selection]
+save_to_clipboard = false
+
+[bell]
+duration = 0
+
+[keyboard]
+bindings = [
+  { key = "C",       mods = "Control|Shift", action = "Copy"  },
+  { key = "V",       mods = "Control|Shift", action = "Paste" },
+  { key = "N",       mods = "Control|Shift", action = "SpawnNewInstance" },
+  { key = "Equals",  mods = "Control|Shift", action = "IncreaseFontSize" },
+  { key = "Minus",   mods = "Control",       action = "DecreaseFontSize" },
+  { key = "Key0",    mods = "Control",       action = "ResetFontSize"    },
+  { key = "Enter",   mods = "Shift",         chars = "\n" },
+]
+`
+
+const AlacrittyThemeConfig = `[colors.primary]
+background = '#101418'
+foreground = '#e0e2e8'
+
+[colors.selection]
+text = '#e0e2e8'
+background = '#124a73'
+
+[colors.cursor]
+text = '#101418'
+cursor = '#9dcbfb'
+
+[colors.normal]
+black   = '#101418'
+red     = '#d75a59'
+green   = '#8ed88c'
+yellow  = '#e0d99d'
+blue    = '#4087bc'
+magenta = '#839fbc'
+cyan    = '#9dcbfb'
+white   = '#abb2bf'
+
+[colors.bright]
+black   = '#5c6370'
+red     = '#e57e7e'
+green   = '#a2e5a0'
+yellow  = '#efe9b3'
+blue    = '#a7d9ff'
+magenta = '#3d8197'
+cyan    = '#5c7ba3'
+white   = '#ffffff'
+`
+
+const GhosttyColorConfig = `background = #101418
+foreground = #e0e2e8
+cursor-color = #9dcbfb
+selection-background = #124a73
+selection-foreground = #e0e2e8
+palette = 0=#101418
+palette = 1=#d75a59
+palette = 2=#8ed88c
+palette = 3=#e0d99d
+palette = 4=#4087bc
+palette = 5=#839fbc
+palette = 6=#9dcbfb
+palette = 7=#abb2bf
+palette = 8=#5c6370
+palette = 9=#e57e7e
+palette = 10=#a2e5a0
+palette = 11=#efe9b3
+palette = 12=#a7d9ff
+palette = 13=#3d8197
+palette = 14=#5c7ba3
+palette = 15=#ffffff
+`
+
+const KittyThemeConfig = `cursor #e0e2e8
+cursor_text_color #c2c7cf
+
+foreground            #e0e2e8
+background            #101418
+selection_foreground  #243240
+selection_background  #b9c8da
+url_color             #9dcbfb
+color0   #101418
+color1   #d75a59
+color2   #8ed88c
+color3   #e0d99d
+color4   #4087bc
+color5   #839fbc
+color6   #9dcbfb
+color7   #abb2bf
+color8   #5c6370
+color9   #e57e7e
+color10   #a2e5a0
+color11   #efe9b3
+color12   #a7d9ff
+color13   #3d8197
+color14   #5c7ba3
+color15   #ffffff
+`
+
+const KittyTabsConfig = `tab_bar_edge            top
+tab_bar_style           powerline
+tab_powerline_style     slanted
+tab_bar_align           left
+tab_bar_min_tabs        2
+tab_bar_margin_width    0.0
+tab_bar_margin_height   2.5 1.5
+tab_bar_margin_color    #101418
+
+tab_bar_background              #101418
+
+active_tab_foreground           #cfe5ff
+active_tab_background           #124a73
+active_tab_font_style           bold
+
+inactive_tab_foreground         #c2c7cf
+inactive_tab_background         #101418
+inactive_tab_font_style         normal
+
+tab_activity_symbol             " ● "
+tab_numbers_style               1
+
+tab_title_template              "{fmt.fg.red}{bell_symbol}{activity_symbol}{fmt.fg.tab}{title[:30]}{title[30:] and '…'} [{index}]"
+active_tab_title_template       "{fmt.fg.red}{bell_symbol}{activity_symbol}{fmt.fg.tab}{title[:30]}{title[30:] and '…'} [{index}]"
 `

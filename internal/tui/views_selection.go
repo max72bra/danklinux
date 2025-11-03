@@ -78,7 +78,7 @@ func (m Model) viewSelectTerminal() string {
 	}{
 		{"ghostty", "A fast, native terminal emulator built in Zig."},
 		{"kitty", "A feature-rich, customizable terminal emulator."},
-		{"alacritty", "A simple terminal emulator. (No Dynamic Theming)"},
+		{"alacritty", "A simple terminal emulator."},
 	}
 
 	for i, option := range options {

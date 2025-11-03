@@ -214,22 +214,31 @@ func TestConfigDeploymentFlow(t *testing.T) {
 	cd := NewConfigDeployer(logChan)
 
 	t.Run("deploy ghostty config to empty directory", func(t *testing.T) {
-		result, err := cd.deployGhosttyConfig()
+		results, err := cd.deployGhosttyConfig()
 		require.NoError(t, err)
+		require.Len(t, results, 2)
 
-		assert.Equal(t, "Ghostty", result.ConfigType)
-		assert.True(t, result.Deployed)
-		assert.Empty(t, result.BackupPath) // No existing config, so no backup
-		assert.FileExists(t, result.Path)
+		mainResult := results[0]
+		assert.Equal(t, "Ghostty", mainResult.ConfigType)
+		assert.True(t, mainResult.Deployed)
+		assert.Empty(t, mainResult.BackupPath)
+		assert.FileExists(t, mainResult.Path)
 
-		// Verify content
-		content, err := os.ReadFile(result.Path)
+		content, err := os.ReadFile(mainResult.Path)
 		require.NoError(t, err)
 		assert.Contains(t, string(content), "window-decoration = false")
+
+		colorResult := results[1]
+		assert.Equal(t, "Ghostty Colors", colorResult.ConfigType)
+		assert.True(t, colorResult.Deployed)
+		assert.FileExists(t, colorResult.Path)
+
+		colorContent, err := os.ReadFile(colorResult.Path)
+		require.NoError(t, err)
+		assert.Contains(t, string(colorContent), "background = #101418")
 	})
 
 	t.Run("deploy ghostty config with existing file", func(t *testing.T) {
-		// Create existing config
 		existingContent := "# Old config\nfont-size = 14\n"
 		ghosttyPath := getGhosttyPath()
 		err := os.MkdirAll(filepath.Dir(ghosttyPath), 0755)
@@ -237,24 +246,29 @@ func TestConfigDeploymentFlow(t *testing.T) {
 		err = os.WriteFile(ghosttyPath, []byte(existingContent), 0644)
 		require.NoError(t, err)
 
-		result, err := cd.deployGhosttyConfig()
+		results, err := cd.deployGhosttyConfig()
 		require.NoError(t, err)
+		require.Len(t, results, 2)
 
-		assert.Equal(t, "Ghostty", result.ConfigType)
-		assert.True(t, result.Deployed)
-		assert.NotEmpty(t, result.BackupPath) // Should have backup
-		assert.FileExists(t, result.Path)
-		assert.FileExists(t, result.BackupPath)
+		mainResult := results[0]
+		assert.Equal(t, "Ghostty", mainResult.ConfigType)
+		assert.True(t, mainResult.Deployed)
+		assert.NotEmpty(t, mainResult.BackupPath)
+		assert.FileExists(t, mainResult.Path)
+		assert.FileExists(t, mainResult.BackupPath)
 
-		// Verify backup content
-		backupContent, err := os.ReadFile(result.BackupPath)
+		backupContent, err := os.ReadFile(mainResult.BackupPath)
 		require.NoError(t, err)
 		assert.Equal(t, existingContent, string(backupContent))
 
-		// Verify new content
-		newContent, err := os.ReadFile(result.Path)
+		newContent, err := os.ReadFile(mainResult.Path)
 		require.NoError(t, err)
 		assert.NotContains(t, string(newContent), "# Old config")
+
+		colorResult := results[1]
+		assert.Equal(t, "Ghostty Colors", colorResult.ConfigType)
+		assert.True(t, colorResult.Deployed)
+		assert.FileExists(t, colorResult.Path)
 	})
 }
 
@@ -498,8 +512,162 @@ func TestHyprlandConfigStructure(t *testing.T) {
 }
 
 func TestGhosttyConfigStructure(t *testing.T) {
-	// Verify the embedded Ghostty config has expected settings
 	assert.Contains(t, GhosttyConfig, "window-decoration = false")
 	assert.Contains(t, GhosttyConfig, "background-opacity = 1.0")
 	assert.Contains(t, GhosttyConfig, "config-file = ./config-dankcolors")
+}
+
+func TestGhosttyColorConfigStructure(t *testing.T) {
+	assert.Contains(t, GhosttyColorConfig, "background = #101418")
+	assert.Contains(t, GhosttyColorConfig, "foreground = #e0e2e8")
+	assert.Contains(t, GhosttyColorConfig, "cursor-color = #9dcbfb")
+	assert.Contains(t, GhosttyColorConfig, "palette = 0=#101418")
+	assert.Contains(t, GhosttyColorConfig, "palette = 15=#ffffff")
+}
+
+func TestKittyConfigStructure(t *testing.T) {
+	assert.Contains(t, KittyConfig, "font_size 12.0")
+	assert.Contains(t, KittyConfig, "window_padding_width 12")
+	assert.Contains(t, KittyConfig, "background_opacity 1.0")
+	assert.Contains(t, KittyConfig, "include dank-tabs.conf")
+	assert.Contains(t, KittyConfig, "include dank-theme.conf")
+}
+
+func TestKittyThemeConfigStructure(t *testing.T) {
+	assert.Contains(t, KittyThemeConfig, "foreground            #e0e2e8")
+	assert.Contains(t, KittyThemeConfig, "background            #101418")
+	assert.Contains(t, KittyThemeConfig, "cursor #e0e2e8")
+	assert.Contains(t, KittyThemeConfig, "color0   #101418")
+	assert.Contains(t, KittyThemeConfig, "color15   #ffffff")
+}
+
+func TestKittyTabsConfigStructure(t *testing.T) {
+	assert.Contains(t, KittyTabsConfig, "tab_bar_style           powerline")
+	assert.Contains(t, KittyTabsConfig, "tab_powerline_style     slanted")
+	assert.Contains(t, KittyTabsConfig, "active_tab_background           #124a73")
+	assert.Contains(t, KittyTabsConfig, "inactive_tab_background         #101418")
+}
+
+func TestAlacrittyConfigStructure(t *testing.T) {
+	assert.Contains(t, AlacrittyConfig, "[general]")
+	assert.Contains(t, AlacrittyConfig, "~/.config/alacritty/dank-theme.toml")
+	assert.Contains(t, AlacrittyConfig, "[window]")
+	assert.Contains(t, AlacrittyConfig, "decorations = \"None\"")
+	assert.Contains(t, AlacrittyConfig, "padding = { x = 12, y = 12 }")
+	assert.Contains(t, AlacrittyConfig, "[cursor]")
+	assert.Contains(t, AlacrittyConfig, "[keyboard]")
+}
+
+func TestAlacrittyThemeConfigStructure(t *testing.T) {
+	assert.Contains(t, AlacrittyThemeConfig, "[colors.primary]")
+	assert.Contains(t, AlacrittyThemeConfig, "background = '#101418'")
+	assert.Contains(t, AlacrittyThemeConfig, "foreground = '#e0e2e8'")
+	assert.Contains(t, AlacrittyThemeConfig, "[colors.cursor]")
+	assert.Contains(t, AlacrittyThemeConfig, "cursor = '#9dcbfb'")
+	assert.Contains(t, AlacrittyThemeConfig, "[colors.normal]")
+	assert.Contains(t, AlacrittyThemeConfig, "[colors.bright]")
+}
+
+func TestKittyConfigDeployment(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "dankinstall-kitty-test")
+	require.NoError(t, err)
+	defer os.RemoveAll(tempDir)
+
+	originalHome := os.Getenv("HOME")
+	os.Setenv("HOME", tempDir)
+	defer os.Setenv("HOME", originalHome)
+
+	logChan := make(chan string, 100)
+	cd := NewConfigDeployer(logChan)
+
+	t.Run("deploy kitty config to empty directory", func(t *testing.T) {
+		results, err := cd.deployKittyConfig()
+		require.NoError(t, err)
+		require.Len(t, results, 3)
+
+		mainResult := results[0]
+		assert.Equal(t, "Kitty", mainResult.ConfigType)
+		assert.True(t, mainResult.Deployed)
+		assert.FileExists(t, mainResult.Path)
+
+		content, err := os.ReadFile(mainResult.Path)
+		require.NoError(t, err)
+		assert.Contains(t, string(content), "include dank-theme.conf")
+
+		themeResult := results[1]
+		assert.Equal(t, "Kitty Theme", themeResult.ConfigType)
+		assert.True(t, themeResult.Deployed)
+		assert.FileExists(t, themeResult.Path)
+
+		tabsResult := results[2]
+		assert.Equal(t, "Kitty Tabs", tabsResult.ConfigType)
+		assert.True(t, tabsResult.Deployed)
+		assert.FileExists(t, tabsResult.Path)
+	})
+}
+
+func TestAlacrittyConfigDeployment(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "dankinstall-alacritty-test")
+	require.NoError(t, err)
+	defer os.RemoveAll(tempDir)
+
+	originalHome := os.Getenv("HOME")
+	os.Setenv("HOME", tempDir)
+	defer os.Setenv("HOME", originalHome)
+
+	logChan := make(chan string, 100)
+	cd := NewConfigDeployer(logChan)
+
+	t.Run("deploy alacritty config to empty directory", func(t *testing.T) {
+		results, err := cd.deployAlacrittyConfig()
+		require.NoError(t, err)
+		require.Len(t, results, 2)
+
+		mainResult := results[0]
+		assert.Equal(t, "Alacritty", mainResult.ConfigType)
+		assert.True(t, mainResult.Deployed)
+		assert.FileExists(t, mainResult.Path)
+
+		content, err := os.ReadFile(mainResult.Path)
+		require.NoError(t, err)
+		assert.Contains(t, string(content), "~/.config/alacritty/dank-theme.toml")
+		assert.Contains(t, string(content), "[window]")
+
+		themeResult := results[1]
+		assert.Equal(t, "Alacritty Theme", themeResult.ConfigType)
+		assert.True(t, themeResult.Deployed)
+		assert.FileExists(t, themeResult.Path)
+
+		themeContent, err := os.ReadFile(themeResult.Path)
+		require.NoError(t, err)
+		assert.Contains(t, string(themeContent), "[colors.primary]")
+		assert.Contains(t, string(themeContent), "background = '#101418'")
+	})
+
+	t.Run("deploy alacritty config with existing file", func(t *testing.T) {
+		existingContent := "# Old alacritty config\n[window]\nopacity = 0.9\n"
+		alacrittyPath := filepath.Join(tempDir, ".config", "alacritty", "alacritty.toml")
+		err := os.MkdirAll(filepath.Dir(alacrittyPath), 0755)
+		require.NoError(t, err)
+		err = os.WriteFile(alacrittyPath, []byte(existingContent), 0644)
+		require.NoError(t, err)
+
+		results, err := cd.deployAlacrittyConfig()
+		require.NoError(t, err)
+		require.Len(t, results, 2)
+
+		mainResult := results[0]
+		assert.True(t, mainResult.Deployed)
+		assert.NotEmpty(t, mainResult.BackupPath)
+		assert.FileExists(t, mainResult.BackupPath)
+
+		backupContent, err := os.ReadFile(mainResult.BackupPath)
+		require.NoError(t, err)
+		assert.Equal(t, existingContent, string(backupContent))
+
+		newContent, err := os.ReadFile(mainResult.Path)
+		require.NoError(t, err)
+		assert.NotContains(t, string(newContent), "# Old alacritty config")
+		assert.Contains(t, string(newContent), "decorations = \"None\"")
+	})
 }
