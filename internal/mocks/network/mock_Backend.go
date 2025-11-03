@@ -1137,6 +1137,53 @@ func (_c *MockBackend_SetPromptBroker_Call) RunAndReturn(run func(network.Prompt
 	return _c
 }
 
+// SetWiFiAutoconnect provides a mock function with given fields: ssid, autoconnect
+func (_m *MockBackend) SetWiFiAutoconnect(ssid string, autoconnect bool) error {
+	ret := _m.Called(ssid, autoconnect)
+
+	if len(ret) == 0 {
+		panic("no return value specified for SetWiFiAutoconnect")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(string, bool) error); ok {
+		r0 = rf(ssid, autoconnect)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// MockBackend_SetWiFiAutoconnect_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SetWiFiAutoconnect'
+type MockBackend_SetWiFiAutoconnect_Call struct {
+	*mock.Call
+}
+
+// SetWiFiAutoconnect is a helper method to define mock.On call
+//   - ssid string
+//   - autoconnect bool
+func (_e *MockBackend_Expecter) SetWiFiAutoconnect(ssid interface{}, autoconnect interface{}) *MockBackend_SetWiFiAutoconnect_Call {
+	return &MockBackend_SetWiFiAutoconnect_Call{Call: _e.mock.On("SetWiFiAutoconnect", ssid, autoconnect)}
+}
+
+func (_c *MockBackend_SetWiFiAutoconnect_Call) Run(run func(ssid string, autoconnect bool)) *MockBackend_SetWiFiAutoconnect_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(string), args[1].(bool))
+	})
+	return _c
+}
+
+func (_c *MockBackend_SetWiFiAutoconnect_Call) Return(_a0 error) *MockBackend_SetWiFiAutoconnect_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *MockBackend_SetWiFiAutoconnect_Call) RunAndReturn(run func(string, bool) error) *MockBackend_SetWiFiAutoconnect_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // SetWiFiEnabled provides a mock function with given fields: enabled
 func (_m *MockBackend) SetWiFiEnabled(enabled bool) error {
 	ret := _m.Called(enabled)

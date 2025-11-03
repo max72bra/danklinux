@@ -53,3 +53,7 @@ func (b *SystemdNetworkdBackend) DisconnectAllVPN() error {
 func (b *SystemdNetworkdBackend) ClearVPNCredentials(uuidOrName string) error {
 	return fmt.Errorf("VPN not supported by networkd backend")
 }
+
+func (b *SystemdNetworkdBackend) SetWiFiAutoconnect(ssid string, autoconnect bool) error {
+	return fmt.Errorf("WiFi autoconnect not supported by networkd backend")
+}

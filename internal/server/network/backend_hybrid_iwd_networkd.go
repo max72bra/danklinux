@@ -192,3 +192,7 @@ func (b *HybridIwdNetworkdBackend) SubmitCredentials(token string, secrets map[s
 func (b *HybridIwdNetworkdBackend) CancelCredentials(token string) error {
 	return b.wifi.CancelCredentials(token)
 }
+
+func (b *HybridIwdNetworkdBackend) SetWiFiAutoconnect(ssid string, autoconnect bool) error {
+	return b.wifi.SetWiFiAutoconnect(ssid, autoconnect)
+}

@@ -223,6 +223,9 @@ func stateChangedMeaningfully(old, new *NetworkState) bool {
 		if oldNet.Saved != newNet.Saved {
 			return true
 		}
+		if oldNet.Autoconnect != newNet.Autoconnect {
+			return true
+		}
 	}
 
 	for i := range old.WiredConnections {
@@ -518,4 +521,8 @@ func (m *Manager) DisconnectAllVPN() error {
 
 func (m *Manager) ClearVPNCredentials(uuidOrName string) error {
 	return m.backend.ClearVPNCredentials(uuidOrName)
+}
+
+func (m *Manager) SetWiFiAutoconnect(ssid string, autoconnect bool) error {
+	return m.backend.SetWiFiAutoconnect(ssid, autoconnect)
 }

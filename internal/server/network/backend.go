@@ -13,6 +13,7 @@ type Backend interface {
 	ConnectWiFi(req ConnectionRequest) error
 	DisconnectWiFi() error
 	ForgetWiFiNetwork(ssid string) error
+	SetWiFiAutoconnect(ssid string, autoconnect bool) error
 
 	GetWiredConnections() ([]WiredConnection, error)
 	GetWiredNetworkDetails(uuid string) (*WiredNetworkInfoResponse, error)

@@ -70,6 +70,8 @@ func HandleRequest(conn net.Conn, req Request, manager *Manager) {
 		handleDisconnectAllVPN(conn, req, manager)
 	case "network.vpn.clearCredentials":
 		handleClearVPNCredentials(conn, req, manager)
+	case "network.wifi.setAutoconnect":
+		handleSetWiFiAutoconnect(conn, req, manager)
 	default:
 		models.RespondError(conn, req.ID, fmt.Sprintf("unknown method: %s", req.Method))
 	}
@@ -461,4 +463,25 @@ func handleClearVPNCredentials(conn net.Conn, req Request, manager *Manager) {
 	}
 
 	models.Respond(conn, req.ID, SuccessResult{Success: true, Message: "VPN credentials cleared"})
+}
+
+func handleSetWiFiAutoconnect(conn net.Conn, req Request, manager *Manager) {
+	ssid, ok := req.Params["ssid"].(string)
+	if !ok {
+		models.RespondError(conn, req.ID, "missing or invalid 'ssid' parameter")
+		return
+	}
+
+	autoconnect, ok := req.Params["autoconnect"].(bool)
+	if !ok {
+		models.RespondError(conn, req.ID, "missing or invalid 'autoconnect' parameter")
+		return
+	}
+
+	if err := manager.SetWiFiAutoconnect(ssid, autoconnect); err != nil {
+		models.RespondError(conn, req.ID, fmt.Sprintf("failed to set autoconnect: %v", err))
+		return
+	}
+
+	models.Respond(conn, req.ID, SuccessResult{Success: true, Message: "autoconnect updated"})
 }

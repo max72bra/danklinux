@@ -169,6 +169,11 @@ func (b *IWDBackend) updateWiFiNetworks() ([]WiFiNetwork, error) {
 		knownNetworks = make(map[string]bool)
 	}
 
+	autoconnectMap, err := b.getAutoconnectSettings()
+	if err != nil {
+		autoconnectMap = make(map[string]bool)
+	}
+
 	b.stateMutex.RLock()
 	currentSSID := b.state.WiFiSSID
 	wifiConnected := b.state.WiFiConnected
@@ -221,12 +226,13 @@ func (b *IWDBackend) updateWiFiNetworks() ([]WiFiNetwork, error) {
 		secured := netType != "open"
 
 		network := WiFiNetwork{
-			SSID:       name,
-			Signal:     signal,
-			Secured:    secured,
-			Connected:  wifiConnected && name == currentSSID,
-			Saved:      knownNetworks[name],
-			Enterprise: netType == "8021x",
+			SSID:        name,
+			Signal:      signal,
+			Secured:     secured,
+			Connected:   wifiConnected && name == currentSSID,
+			Saved:       knownNetworks[name],
+			Autoconnect: autoconnectMap[name],
+			Enterprise:  netType == "8021x",
 		}
 
 		networks = append(networks, network)
@@ -269,6 +275,35 @@ func (b *IWDBackend) getKnownNetworks() (map[string]bool, error) {
 	}
 
 	return known, nil
+}
+
+func (b *IWDBackend) getAutoconnectSettings() (map[string]bool, error) {
+	obj := b.conn.Object(iwdBusName, iwdObjectPath)
+
+	var objects map[dbus.ObjectPath]map[string]map[string]dbus.Variant
+	err := obj.Call(dbusObjectManager+".GetManagedObjects", 0).Store(&objects)
+	if err != nil {
+		return nil, err
+	}
+
+	autoconnectMap := make(map[string]bool)
+	for _, interfaces := range objects {
+		if knownProps, ok := interfaces[iwdKnownNetworkInterface]; ok {
+			if nameVar, ok := knownProps["Name"]; ok {
+				if name, ok := nameVar.Value().(string); ok {
+					autoconnect := true
+					if acVar, ok := knownProps["AutoConnect"]; ok {
+						if ac, ok := acVar.Value().(bool); ok {
+							autoconnect = ac
+						}
+					}
+					autoconnectMap[name] = autoconnect
+				}
+			}
+		}
+	}
+
+	return autoconnectMap, nil
 }
 
 func (b *IWDBackend) GetWiFiNetworkDetails(ssid string) (*NetworkInfoResponse, error) {
@@ -578,6 +613,40 @@ func (b *IWDBackend) ForgetWiFiNetwork(ssid string) error {
 						b.state.NetworkStatus = StatusDisconnected
 						b.stateMutex.Unlock()
 					}
+
+					if b.onStateChange != nil {
+						b.onStateChange()
+					}
+
+					return nil
+				}
+			}
+		}
+	}
+
+	return fmt.Errorf("network not found")
+}
+
+func (b *IWDBackend) SetWiFiAutoconnect(ssid string, autoconnect bool) error {
+	obj := b.conn.Object(iwdBusName, iwdObjectPath)
+
+	var objects map[dbus.ObjectPath]map[string]map[string]dbus.Variant
+	err := obj.Call(dbusObjectManager+".GetManagedObjects", 0).Store(&objects)
+	if err != nil {
+		return err
+	}
+
+	for path, interfaces := range objects {
+		if knownProps, ok := interfaces[iwdKnownNetworkInterface]; ok {
+			if nameVar, ok := knownProps["Name"]; ok {
+				if name, ok := nameVar.Value().(string); ok && name == ssid {
+					knownObj := b.conn.Object(iwdBusName, path)
+					call := knownObj.Call(dbusPropertiesInterface+".Set", 0, iwdKnownNetworkInterface, "AutoConnect", dbus.MakeVariant(autoconnect))
+					if call.Err != nil {
+						return fmt.Errorf("failed to set autoconnect: %w", call.Err)
+					}
+
+					b.updateState()
 
 					if b.onStateChange != nil {
 						b.onStateChange()

@@ -91,6 +91,7 @@ func (b *NetworkManagerBackend) GetWiFiNetworkDetails(ssid string) (*NetworkInfo
 	}
 
 	savedSSIDs := make(map[string]bool)
+	autoconnectMap := make(map[string]bool)
 	for _, conn := range connections {
 		connSettings, err := conn.GetSettings()
 		if err != nil {
@@ -103,6 +104,11 @@ func (b *NetworkManagerBackend) GetWiFiNetworkDetails(ssid string) (*NetworkInfo
 					if ssidBytes, ok := wifiSettings["ssid"].([]byte); ok {
 						savedSSID := string(ssidBytes)
 						savedSSIDs[savedSSID] = true
+						autoconnect := true
+						if ac, ok := connMeta["autoconnect"].(bool); ok {
+							autoconnect = ac
+						}
+						autoconnectMap[savedSSID] = autoconnect
 					}
 				}
 			}
@@ -153,17 +159,18 @@ func (b *NetworkManagerBackend) GetWiFiNetworkDetails(ssid string) (*NetworkInfo
 		channel := frequencyToChannel(freq)
 
 		network := WiFiNetwork{
-			SSID:       ssid,
-			BSSID:      bssid,
-			Signal:     strength,
-			Secured:    secured,
-			Enterprise: enterprise,
-			Connected:  ssid == currentSSID && bssid == currentBSSID,
-			Saved:      savedSSIDs[ssid],
-			Frequency:  freq,
-			Mode:       modeStr,
-			Rate:       maxBitrate / 1000,
-			Channel:    channel,
+			SSID:        ssid,
+			BSSID:       bssid,
+			Signal:      strength,
+			Secured:     secured,
+			Enterprise:  enterprise,
+			Connected:   ssid == currentSSID && bssid == currentBSSID,
+			Saved:       savedSSIDs[ssid],
+			Autoconnect: autoconnectMap[ssid],
+			Frequency:   freq,
+			Mode:        modeStr,
+			Rate:        maxBitrate / 1000,
+			Channel:     channel,
 		}
 
 		bands = append(bands, network)
@@ -347,6 +354,7 @@ func (b *NetworkManagerBackend) updateWiFiNetworks() ([]WiFiNetwork, error) {
 	}
 
 	savedSSIDs := make(map[string]bool)
+	autoconnectMap := make(map[string]bool)
 	for _, conn := range connections {
 		connSettings, err := conn.GetSettings()
 		if err != nil {
@@ -359,6 +367,11 @@ func (b *NetworkManagerBackend) updateWiFiNetworks() ([]WiFiNetwork, error) {
 					if ssidBytes, ok := wifiSettings["ssid"].([]byte); ok {
 						ssid := string(ssidBytes)
 						savedSSIDs[ssid] = true
+						autoconnect := true
+						if ac, ok := connMeta["autoconnect"].(bool); ok {
+							autoconnect = ac
+						}
+						autoconnectMap[ssid] = autoconnect
 					}
 				}
 			}
@@ -421,17 +434,18 @@ func (b *NetworkManagerBackend) updateWiFiNetworks() ([]WiFiNetwork, error) {
 		channel := frequencyToChannel(freq)
 
 		network := WiFiNetwork{
-			SSID:       ssid,
-			BSSID:      bssid,
-			Signal:     strength,
-			Secured:    secured,
-			Enterprise: enterprise,
-			Connected:  ssid == currentSSID,
-			Saved:      savedSSIDs[ssid],
-			Frequency:  freq,
-			Mode:       modeStr,
-			Rate:       maxBitrate / 1000,
-			Channel:    channel,
+			SSID:        ssid,
+			BSSID:       bssid,
+			Signal:      strength,
+			Secured:     secured,
+			Enterprise:  enterprise,
+			Connected:   ssid == currentSSID,
+			Saved:       savedSSIDs[ssid],
+			Autoconnect: autoconnectMap[ssid],
+			Frequency:   freq,
+			Mode:        modeStr,
+			Rate:        maxBitrate / 1000,
+			Channel:     channel,
 		}
 
 		seenSSIDs[ssid] = &network
@@ -655,6 +669,49 @@ func (b *NetworkManagerBackend) createAndConnectWiFi(req ConnectionRequest) erro
 			return fmt.Errorf("failed to connect: %w", err)
 		}
 		log.Infof("[createAndConnectWiFi] Connection activation initiated, waiting for NetworkManager state changes...")
+	}
+
+	return nil
+}
+
+func (b *NetworkManagerBackend) SetWiFiAutoconnect(ssid string, autoconnect bool) error {
+	conn, err := b.findConnection(ssid)
+	if err != nil {
+		return fmt.Errorf("connection not found: %w", err)
+	}
+
+	settings, err := conn.GetSettings()
+	if err != nil {
+		return fmt.Errorf("failed to get connection settings: %w", err)
+	}
+
+	if connMeta, ok := settings["connection"]; ok {
+		connMeta["autoconnect"] = autoconnect
+	} else {
+		return fmt.Errorf("connection metadata not found")
+	}
+
+	if ipv4, ok := settings["ipv4"]; ok {
+		delete(ipv4, "addresses")
+		delete(ipv4, "routes")
+		delete(ipv4, "dns")
+	}
+
+	if ipv6, ok := settings["ipv6"]; ok {
+		delete(ipv6, "addresses")
+		delete(ipv6, "routes")
+		delete(ipv6, "dns")
+	}
+
+	err = conn.Update(settings)
+	if err != nil {
+		return fmt.Errorf("failed to update connection: %w", err)
+	}
+
+	b.updateWiFiNetworks()
+
+	if b.onStateChange != nil {
+		b.onStateChange()
 	}
 
 	return nil

@@ -24,17 +24,18 @@ const (
 )
 
 type WiFiNetwork struct {
-	SSID       string `json:"ssid"`
-	BSSID      string `json:"bssid"`
-	Signal     uint8  `json:"signal"`
-	Secured    bool   `json:"secured"`
-	Enterprise bool   `json:"enterprise"`
-	Connected  bool   `json:"connected"`
-	Saved      bool   `json:"saved"`
-	Frequency  uint32 `json:"frequency"`
-	Mode       string `json:"mode"`
-	Rate       uint32 `json:"rate"`
-	Channel    uint32 `json:"channel"`
+	SSID        string `json:"ssid"`
+	BSSID       string `json:"bssid"`
+	Signal      uint8  `json:"signal"`
+	Secured     bool   `json:"secured"`
+	Enterprise  bool   `json:"enterprise"`
+	Connected   bool   `json:"connected"`
+	Saved       bool   `json:"saved"`
+	Autoconnect bool   `json:"autoconnect"`
+	Frequency   uint32 `json:"frequency"`
+	Mode        string `json:"mode"`
+	Rate        uint32 `json:"rate"`
+	Channel     uint32 `json:"channel"`
 }
 
 type VPNProfile struct {

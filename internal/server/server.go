@@ -25,7 +25,7 @@ import (
 	"github.com/AvengeMedia/danklinux/internal/server/wlcontext"
 )
 
-const APIVersion = 13
+const APIVersion = 14
 
 type Capabilities struct {
 	Capabilities []string `json:"capabilities"`
@@ -843,6 +843,7 @@ func Start(printDocs bool) error {
 		log.Info(" network.wifi.toggle         - Toggle WiFi radio")
 		log.Info(" network.wifi.enable         - Enable WiFi")
 		log.Info(" network.wifi.disable        - Disable WiFi")
+		log.Info(" network.wifi.setAutoconnect - Set network autoconnect (params: ssid, autoconnect)")
 		log.Info(" network.ethernet.connect    - Connect Ethernet")
 		log.Info(" network.ethernet.connect.config - Connect Ethernet to a specific configuration")
 		log.Info(" network.ethernet.disconnect - Disconnect Ethernet")
