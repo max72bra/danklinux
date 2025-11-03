@@ -54,17 +54,6 @@ type Manager struct {
 	wg       sync.WaitGroup
 }
 
-type debounceRequest struct {
-	deviceID string
-	percent  int
-}
-
-type backend interface {
-	GetDevices() ([]Device, error)
-	SetBrightness(id string, percent int) error
-	Close()
-}
-
 type SysfsBackend struct {
 	basePath string
 	classes  []string
