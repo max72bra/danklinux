@@ -371,11 +371,6 @@ func (a *ArchDistribution) InstallPackages(ctx context.Context, dependencies []d
 		LogOutput:  "Starting post-installation configuration...",
 	}
 
-	// Add user to video and input groups
-	if err := a.addUserToGroups(ctx, sudoPassword, progressChan); err != nil {
-		a.log(fmt.Sprintf("Warning: Failed to add user to groups: %v", err))
-	}
-
 	// Phase 7: Complete
 	progressChan <- InstallProgressMsg{
 		Phase:      PhaseComplete,

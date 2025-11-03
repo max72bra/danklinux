@@ -383,11 +383,6 @@ func (f *FedoraDistribution) InstallPackages(ctx context.Context, dependencies [
 		LogOutput:  "Starting post-installation configuration...",
 	}
 
-	// Add user to video and input groups
-	if err := f.addUserToGroups(ctx, sudoPassword, progressChan); err != nil {
-		f.log(fmt.Sprintf("Warning: Failed to add user to groups: %v", err))
-	}
-
 	// Phase 7: Complete
 	progressChan <- InstallProgressMsg{
 		Phase:      PhaseComplete,

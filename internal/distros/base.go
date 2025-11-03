@@ -630,28 +630,3 @@ func (b *BaseDistribution) installDMSBinary(ctx context.Context, sudoPassword st
 	b.log("DMS binary and udev rules installed successfully")
 	return nil
 }
-
-// addUserToGroups adds the current user to the specified groups
-func (b *BaseDistribution) addUserToGroups(ctx context.Context, sudoPassword string, progressChan chan<- InstallProgressMsg) error {
-	username := os.Getenv("USER")
-	if username == "" {
-		b.log("Warning: USER environment variable not set, skipping user group addition")
-		return nil
-	}
-
-	progressChan <- InstallProgressMsg{
-		Phase:       PhaseConfiguration,
-		Progress:    0.92,
-		Step:        "Adding user to video and input groups...",
-		IsComplete:  false,
-		NeedsSudo:   true,
-		CommandInfo: fmt.Sprintf("sudo usermod -aG video,input %s", username),
-	}
-
-	cmd := exec.CommandContext(ctx, "bash", "-c",
-		fmt.Sprintf("echo '%s' | sudo -S usermod -aG video,input %s 2>&1 || true", sudoPassword, username))
-	output, _ := cmd.CombinedOutput()
-	b.log(fmt.Sprintf("usermod output: %s", string(output)))
-
-	return nil
-}
