@@ -356,7 +356,6 @@ func (m *ManualPackageInstaller) installQuickshell(ctx context.Context, sudoPass
 		"-DCMAKE_BUILD_TYPE=RelWithDebInfo",
 		"-DCRASH_REPORTER=off",
 		"-DX11=off",
-		"-DI3=off",
 		"-DCMAKE_CXX_STANDARD=20")
 	configureCmd.Dir = tmpDir
 	configureCmd.Env = append(os.Environ(), "TMPDIR="+cacheDir)
