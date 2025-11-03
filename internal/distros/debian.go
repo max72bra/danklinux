@@ -284,6 +284,11 @@ func (d *DebianDistribution) InstallPackages(ctx context.Context, dependencies [
 		LogOutput:  "Starting post-installation configuration...",
 	}
 
+	// Add user to video and input groups
+	if err := d.addUserToGroups(ctx, sudoPassword, progressChan); err != nil {
+		d.log(fmt.Sprintf("Warning: Failed to add user to groups: %v", err))
+	}
+
 	progressChan <- InstallProgressMsg{
 		Phase:      PhaseComplete,
 		Progress:   1.0,

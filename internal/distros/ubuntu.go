@@ -342,6 +342,11 @@ func (u *UbuntuDistribution) InstallPackages(ctx context.Context, dependencies [
 		LogOutput:  "Starting post-installation configuration...",
 	}
 
+	// Add user to video and input groups
+	if err := u.addUserToGroups(ctx, sudoPassword, progressChan); err != nil {
+		u.log(fmt.Sprintf("Warning: Failed to add user to groups: %v", err))
+	}
+
 	// Phase 7: Complete
 	progressChan <- InstallProgressMsg{
 		Phase:      PhaseComplete,

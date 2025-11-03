@@ -345,6 +345,12 @@ func (n *NixOSDistribution) InstallPackages(ctx context.Context, dependencies []
 		IsComplete: false,
 		LogOutput:  "Starting post-installation configuration...",
 	}
+
+	// Add user to video and input groups
+	if err := n.addUserToGroups(ctx, sudoPassword, progressChan); err != nil {
+		n.log(fmt.Sprintf("Warning: Failed to add user to groups: %v", err))
+	}
+
 	if err := n.postInstallConfig(progressChan); err != nil {
 		return fmt.Errorf("failed to configure system: %w", err)
 	}

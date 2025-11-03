@@ -334,6 +334,11 @@ func (o *OpenSUSEDistribution) InstallPackages(ctx context.Context, dependencies
 		LogOutput:  "Starting post-installation configuration...",
 	}
 
+	// Add user to video and input groups
+	if err := o.addUserToGroups(ctx, sudoPassword, progressChan); err != nil {
+		o.log(fmt.Sprintf("Warning: Failed to add user to groups: %v", err))
+	}
+
 	// Phase 5: Complete
 	progressChan <- InstallProgressMsg{
 		Phase:      PhaseComplete,
