@@ -20,7 +20,7 @@ func init() {
 	pluginsCmd.AddCommand(pluginsBrowseCmd, pluginsListCmd, pluginsInstallCmd, pluginsUninstallCmd)
 
 	// Add commands to root (excluding updateCmd and greeterCmd)
-	rootCmd.AddCommand(versionCmd, runCmd, restartCmd, killCmd, ipcCmd, debugSrvCmd, pluginsCmd)
+	rootCmd.AddCommand(versionCmd, runCmd, restartCmd, killCmd, ipcCmd, debugSrvCmd, pluginsCmd, dank16Cmd, brightnessCmd, hyprlandCmd)
 	rootCmd.SetHelpTemplate(getHelpTemplate())
 }
 

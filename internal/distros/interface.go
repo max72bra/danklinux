@@ -16,17 +16,19 @@ const (
 	FamilyUbuntu DistroFamily = "ubuntu"
 	FamilyDebian DistroFamily = "debian"
 	FamilyNix    DistroFamily = "nix"
+	FamilyGentoo DistroFamily = "gentoo"
 )
 
 // PackageManagerType defines the package manager a distro uses
 type PackageManagerType string
 
 const (
-	PackageManagerPacman PackageManagerType = "pacman"
-	PackageManagerDNF    PackageManagerType = "dnf"
-	PackageManagerAPT    PackageManagerType = "apt"
-	PackageManagerZypper PackageManagerType = "zypper"
-	PackageManagerNix    PackageManagerType = "nix"
+	PackageManagerPacman  PackageManagerType = "pacman"
+	PackageManagerDNF     PackageManagerType = "dnf"
+	PackageManagerAPT     PackageManagerType = "apt"
+	PackageManagerZypper  PackageManagerType = "zypper"
+	PackageManagerNix     PackageManagerType = "nix"
+	PackageManagerPortage PackageManagerType = "portage"
 )
 
 // RepositoryType defines the type of repository for a package
@@ -38,6 +40,7 @@ const (
 	RepoTypeCOPR   RepositoryType = "copr"   // Fedora COPR
 	RepoTypePPA    RepositoryType = "ppa"    // Ubuntu PPA
 	RepoTypeFlake  RepositoryType = "flake"  // Nix flake
+	RepoTypeGURU   RepositoryType = "guru"   // Gentoo GURU
 	RepoTypeManual RepositoryType = "manual" // Manual build from source
 )
 
