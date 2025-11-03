@@ -179,7 +179,7 @@ func (f *FedoraDistribution) getQuickshellMapping(variant deps.PackageVariant) P
 
 func (f *FedoraDistribution) getDmsMapping(variant deps.PackageVariant) PackageMapping {
 	if variant == deps.VariantGit {
-		return PackageMapping{Name: "dms-git", Repository: RepoTypeCOPR, RepoURL: "avengemedia/dms-git"}
+		return PackageMapping{Name: "dms", Repository: RepoTypeCOPR, RepoURL: "avengemedia/dms-git"}
 	}
 	return PackageMapping{Name: "dms", Repository: RepoTypeCOPR, RepoURL: "avengemedia/dms"}
 }
@@ -200,7 +200,7 @@ func (f *FedoraDistribution) getHyprpickerMapping(variant deps.PackageVariant) P
 
 func (f *FedoraDistribution) getNiriMapping(variant deps.PackageVariant) PackageMapping {
 	if variant == deps.VariantGit {
-		return PackageMapping{Name: "niri-git", Repository: RepoTypeCOPR, RepoURL: "yalter/niri-git"}
+		return PackageMapping{Name: "niri", Repository: RepoTypeCOPR, RepoURL: "yalter/niri-git"}
 	}
 	return PackageMapping{Name: "niri", Repository: RepoTypeCOPR, RepoURL: "yalter/niri"}
 }
@@ -468,18 +468,19 @@ func (f *FedoraDistribution) enableCOPRRepos(ctx context.Context, coprPkgs []Pac
 
 			// Special handling for niri COPR repo - set priority=1
 			if pkg.RepoURL == "yalter/niri-git" {
-				f.log("Setting priority=1 for niri COPR repo...")
+				f.log("Setting priority=1 for niri-git COPR repo...")
+				repoFile := "/etc/yum.repos.d/_copr:copr.fedorainfracloud.org:yalter:niri-git.repo"
 				progressChan <- InstallProgressMsg{
 					Phase:       PhaseSystemPackages,
 					Progress:    0.22,
 					Step:        "Setting niri COPR repo priority...",
 					IsComplete:  false,
 					NeedsSudo:   true,
-					CommandInfo: "echo \"priority=1\" | sudo tee -a /etc/yum.repos.d/_copr:copr.fedorainfracloud.org:yalter:niri-git.repo",
+					CommandInfo: fmt.Sprintf("echo \"priority=1\" | sudo tee -a %s", repoFile),
 				}
 
 				priorityCmd := exec.CommandContext(ctx, "bash", "-c",
-					fmt.Sprintf("echo '%s' | sudo -S bash -c 'echo \"priority=1\" | tee -a /etc/yum.repos.d/_copr:copr.fedorainfracloud.org:yalter:niri-git.repo' 2>&1", sudoPassword))
+					fmt.Sprintf("echo '%s' | sudo -S bash -c 'echo \"priority=1\" | tee -a %s' 2>&1", sudoPassword, repoFile))
 				priorityOutput, err := priorityCmd.CombinedOutput()
 				if err != nil {
 					f.logError("failed to set niri COPR repo priority", err)
