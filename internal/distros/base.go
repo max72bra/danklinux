@@ -17,9 +17,6 @@ import (
 	"github.com/AvengeMedia/danklinux/internal/version"
 )
 
-//go:embed embedded/90-dms.rules
-var udevRulesContent string
-
 const forceQuickshellGit = false
 const forceDMSGit = false
 
@@ -607,26 +604,6 @@ func (b *BaseDistribution) installDMSBinary(ctx context.Context, sudoPassword st
 		return fmt.Errorf("failed to install DMS binary: %w", err)
 	}
 
-	progressChan <- InstallProgressMsg{
-		Phase:       PhaseConfiguration,
-		Progress:    0.90,
-		Step:        "Installing udev rules...",
-		IsComplete:  false,
-		NeedsSudo:   true,
-		CommandInfo: "sudo install udev rules to /etc/udev/rules.d/90-dms.rules",
-	}
-
-	udevRulesPath := filepath.Join(tmpDir, "90-dms.rules")
-	if err := os.WriteFile(udevRulesPath, []byte(udevRulesContent), 0644); err != nil {
-		return fmt.Errorf("failed to write udev rules file: %w", err)
-	}
-
-	installUdevCmd := exec.CommandContext(ctx, "bash", "-c",
-		fmt.Sprintf("echo '%s' | sudo -S install -m 0644 %s /etc/udev/rules.d/90-dms.rules", sudoPassword, udevRulesPath))
-	if err := installUdevCmd.Run(); err != nil {
-		return fmt.Errorf("failed to install udev rules: %w", err)
-	}
-
-	b.log("DMS binary and udev rules installed successfully")
+	b.log("DMS binary installed successfully")
 	return nil
 }
