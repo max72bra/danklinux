@@ -704,6 +704,21 @@ func EnrichVSCodeTheme(themeData []byte, colors []string) ([]byte, error) {
 		theme["colors"] = colorsMap
 	}
 
+	bg := colors[0]
+	isLight := false
+	if len(bg) == 7 && bg[0] == '#' {
+		r, g, b := 0, 0, 0
+		fmt.Sscanf(bg[1:], "%02x%02x%02x", &r, &g, &b)
+		luminance := (0.299*float64(r) + 0.587*float64(g) + 0.114*float64(b)) / 255.0
+		isLight = luminance > 0.5
+	}
+
+	if isLight {
+		theme["type"] = "light"
+	} else {
+		theme["type"] = "dark"
+	}
+
 	colorsMap["terminal.ansiBlack"] = colors[0]
 	colorsMap["terminal.ansiRed"] = colors[1]
 	colorsMap["terminal.ansiGreen"] = colors[2]
