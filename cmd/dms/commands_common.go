@@ -39,6 +39,15 @@ var restartCmd = &cobra.Command{
 	},
 }
 
+var restartDetachedCmd = &cobra.Command{
+	Use:    "restart-detached <pid>",
+	Hidden: true,
+	Args:   cobra.ExactArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		runDetachedRestart(args[0])
+	},
+}
+
 var killCmd = &cobra.Command{
 	Use:   "kill",
 	Short: "Kill running DMS shell processes",
@@ -347,6 +356,7 @@ func getCommonCommands() []*cobra.Command {
 		versionCmd,
 		runCmd,
 		restartCmd,
+		restartDetachedCmd,
 		killCmd,
 		ipcCmd,
 		debugSrvCmd,

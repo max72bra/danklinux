@@ -35,7 +35,6 @@ func init() {
 }
 
 func main() {
-	// Block root
 	if os.Geteuid() == 0 {
 		log.Fatal("This program should not be run as root. Exiting.")
 	}

@@ -16,6 +16,42 @@ import (
 	"github.com/AvengeMedia/danklinux/internal/server"
 )
 
+func isRunningUnderSystemd() bool {
+	return os.Getenv("DMS_SYSTEMD") == "1"
+}
+
+func execDetachedRestart(targetPID int) {
+	selfPath, err := os.Executable()
+	if err != nil {
+		return
+	}
+
+	cmd := exec.Command(selfPath, "restart-detached", strconv.Itoa(targetPID))
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		Setsid: true,
+	}
+	cmd.Start()
+}
+
+func runDetachedRestart(targetPIDStr string) {
+	targetPID, err := strconv.Atoi(targetPIDStr)
+	if err != nil {
+		return
+	}
+
+	time.Sleep(200 * time.Millisecond)
+
+	proc, err := os.FindProcess(targetPID)
+	if err == nil {
+		proc.Kill()
+	}
+
+	time.Sleep(100 * time.Millisecond)
+
+	killShell()
+	runShellDaemon()
+}
+
 func locateDMSConfig() (string, error) {
 	var searchPaths []string
 
@@ -131,67 +167,6 @@ func getAllDMSPIDs() []int {
 	return pids
 }
 
-// Checks if the current process is running under systemd
-func isUnderSystemd() bool {
-	return os.Getenv("NOTIFY_SOCKET") != ""
-}
-
-func restartQuickshellProcess(ctx context.Context, oldCmd *exec.Cmd, isDaemon bool) *exec.Cmd {
-	log.Info("Gracefully restarting quickshell process...")
-
-	if oldCmd != nil && oldCmd.Process != nil {
-		if err := oldCmd.Process.Signal(syscall.SIGTERM); err == nil {
-			log.Info("Sent SIGTERM to quickshell, waiting for graceful exit...")
-			time.Sleep(2 * time.Second)
-		}
-		oldCmd.Process.Kill()
-	}
-
-	configPath, err := locateDMSConfig()
-	if err != nil {
-		log.Errorf("Error locating DMS config: %v", err)
-		return nil
-	}
-
-	socketPath := server.GetSocketPath()
-
-	log.Infof("Spawning new quickshell with -p %s", configPath)
-
-	newCmd := exec.CommandContext(ctx, "qs", "-p", configPath)
-	newCmd.Env = append(os.Environ(), "DMS_SOCKET="+socketPath)
-	if qtRules := log.GetQtLoggingRules(); qtRules != "" {
-		newCmd.Env = append(newCmd.Env, "QT_LOGGING_RULES="+qtRules)
-	}
-
-	if isDaemon {
-		devNull, err := os.OpenFile("/dev/null", os.O_RDWR, 0)
-		if err != nil {
-			log.Errorf("Error opening /dev/null: %v", err)
-			return nil
-		}
-		newCmd.Stdin = devNull
-		newCmd.Stdout = devNull
-		newCmd.Stderr = devNull
-	} else {
-		newCmd.Stdin = os.Stdin
-		newCmd.Stdout = os.Stdout
-		newCmd.Stderr = os.Stderr
-	}
-
-	if err := newCmd.Start(); err != nil {
-		log.Errorf("Error starting new quickshell: %v", err)
-		return nil
-	}
-
-	if err := writePIDFile(newCmd.Process.Pid); err != nil {
-		log.Warnf("Failed to write PID file: %v", err)
-	}
-
-	log.Infof("Successfully restarted quickshell (new PID: %d)", newCmd.Process.Pid)
-
-	return newCmd
-}
-
 func runShellInteractive() {
 	go printASCII()
 	fmt.Fprintf(os.Stderr, "dms %s\n", Version)
@@ -236,106 +211,78 @@ func runShellInteractive() {
 	defer removePIDFile()
 
 	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM, syscall.SIGUSR1, syscall.SIGHUP)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
 
-	for {
-		go func() {
-			if err := cmd.Wait(); err != nil {
-				errChan <- fmt.Errorf("quickshell exited: %w", err)
-			} else {
-				errChan <- fmt.Errorf("quickshell exited")
-			}
-		}()
+	go func() {
+		if err := cmd.Wait(); err != nil {
+			errChan <- fmt.Errorf("quickshell exited: %w", err)
+		} else {
+			errChan <- fmt.Errorf("quickshell exited")
+		}
+	}()
 
-		select {
-		case sig := <-sigChan:
-			if sig == syscall.SIGUSR1 {
-				log.Info("Received SIGUSR1, performing graceful restart...")
-				cmd = restartQuickshellProcess(ctx, cmd, false)
-				if cmd == nil {
-					log.Error("Failed to restart quickshell, shutting down")
-					cancel()
-					os.Remove(socketPath)
-					os.Exit(1)
-				}
-				select {
-				case <-errChan:
-				default:
-				}
-				errChan = make(chan error, 2)
-				continue
-			} else if sig == syscall.SIGHUP {
-				if isUnderSystemd() {
-					log.Info("Received SIGHUP under systemd, cleaning up and exiting...")
-					cancel()
-					if cmd.Process != nil {
-						cmd.Process.Kill()
-					}
-					os.Remove(socketPath)
-					os.Exit(0)
-				} else {
-					log.Info("Received SIGHUP, performing full restart...")
-					cancel()
-					if cmd.Process != nil {
-						cmd.Process.Kill()
-					}
-					os.Remove(socketPath)
-					killShell()
-					time.Sleep(500 * time.Millisecond)
-					runShellDaemon()
-					return
-				}
-			} else {
-				log.Infof("\nReceived signal %v, shutting down...", sig)
+	select {
+	case sig := <-sigChan:
+		if sig == syscall.SIGHUP {
+			if isRunningUnderSystemd() {
 				cancel()
 				cmd.Process.Kill()
 				os.Remove(socketPath)
-				return
+			} else {
+				execDetachedRestart(os.Getpid())
 			}
-		case err := <-errChan:
-			log.Error(err)
+		} else {
+			log.Infof("\nReceived signal %v, shutting down...", sig)
 			cancel()
-			if cmd.Process != nil {
-				cmd.Process.Kill()
-			}
+			cmd.Process.Kill()
 			os.Remove(socketPath)
-			os.Exit(1)
 		}
+	case err := <-errChan:
+		log.Error(err)
+		cancel()
+		if cmd.Process != nil {
+			cmd.Process.Kill()
+		}
+		os.Remove(socketPath)
+		os.Exit(1)
 	}
 }
 
 func restartShell() {
 	pids := getAllDMSPIDs()
-	currentPid := os.Getpid()
 
-	var targetPid int
+	if len(pids) == 0 {
+		log.Info("No running DMS shell instances found. Starting daemon...")
+		runShellDaemon()
+		return
+	}
+
+	currentPid := os.Getpid()
+	uniquePids := make(map[int]bool)
+
 	for _, pid := range pids {
 		if pid != currentPid {
-			proc, err := os.FindProcess(pid)
-			if err != nil {
-				continue
-			}
-			if err := proc.Signal(syscall.Signal(0)); err == nil {
-				targetPid = pid
-				break
-			}
+			uniquePids[pid] = true
 		}
 	}
 
-	if targetPid > 0 {
-		log.Infof("Found running DMS process (PID: %d), sending SIGHUP...", targetPid)
-		proc, err := os.FindProcess(targetPid)
-		if err == nil {
-			if err := proc.Signal(syscall.SIGHUP); err == nil {
-				log.Info("SIGHUP sent successfully, process will handle restart")
-				return
-			}
-			log.Warnf("Failed to send SIGHUP to PID %d: %v", targetPid, err)
+	for pid := range uniquePids {
+		proc, err := os.FindProcess(pid)
+		if err != nil {
+			log.Errorf("Error finding process %d: %v", pid, err)
+			continue
+		}
+
+		if err := proc.Signal(syscall.Signal(0)); err != nil {
+			continue
+		}
+
+		if err := proc.Signal(syscall.SIGHUP); err != nil {
+			log.Errorf("Error sending SIGHUP to process %d: %v", pid, err)
+		} else {
+			log.Infof("Sent SIGHUP to DMS process with PID %d", pid)
 		}
 	}
-
-	log.Info("No running DMS process found, spawning new daemon...")
-	runShellDaemon()
 }
 
 func killShell() {
@@ -469,70 +416,38 @@ func runShellDaemon() {
 	defer removePIDFile()
 
 	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM, syscall.SIGUSR1, syscall.SIGHUP)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
 
-	for {
-		go func() {
-			if err := cmd.Wait(); err != nil {
-				errChan <- fmt.Errorf("quickshell exited: %w", err)
-			} else {
-				errChan <- fmt.Errorf("quickshell exited")
-			}
-		}()
+	go func() {
+		if err := cmd.Wait(); err != nil {
+			errChan <- fmt.Errorf("quickshell exited: %w", err)
+		} else {
+			errChan <- fmt.Errorf("quickshell exited")
+		}
+	}()
 
-		select {
-		case sig := <-sigChan:
-			if sig == syscall.SIGUSR1 {
-				log.Info("Received SIGUSR1, performing graceful restart...")
-				cmd = restartQuickshellProcess(ctx, cmd, true)
-				if cmd == nil {
-					log.Error("Failed to restart quickshell, shutting down")
-					cancel()
-					os.Remove(socketPath)
-					os.Exit(1)
-				}
-
-				select {
-				case <-errChan:
-				default:
-				}
-				errChan = make(chan error, 2)
-				continue
-			} else if sig == syscall.SIGHUP {
-				if isUnderSystemd() {
-					log.Info("Received SIGHUP under systemd, cleaning up and exiting...")
-					cancel()
-					if cmd.Process != nil {
-						cmd.Process.Kill()
-					}
-					os.Remove(socketPath)
-					os.Exit(0)
-				} else {
-					log.Info("Received SIGHUP, performing full restart...")
-					cancel()
-					if cmd.Process != nil {
-						cmd.Process.Kill()
-					}
-					os.Remove(socketPath)
-					killShell()
-					time.Sleep(500 * time.Millisecond)
-					runShellDaemon()
-					return
-				}
-			} else {
+	select {
+	case sig := <-sigChan:
+		if sig == syscall.SIGHUP {
+			if isRunningUnderSystemd() {
 				cancel()
 				cmd.Process.Kill()
 				os.Remove(socketPath)
-				return
+			} else {
+				execDetachedRestart(os.Getpid())
 			}
-		case <-errChan:
+		} else {
 			cancel()
-			if cmd.Process != nil {
-				cmd.Process.Kill()
-			}
+			cmd.Process.Kill()
 			os.Remove(socketPath)
-			os.Exit(1)
 		}
+	case <-errChan:
+		cancel()
+		if cmd.Process != nil {
+			cmd.Process.Kill()
+		}
+		os.Remove(socketPath)
+		os.Exit(1)
 	}
 }
 
