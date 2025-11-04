@@ -236,7 +236,7 @@ func runShellInteractive() {
 	defer removePIDFile()
 
 	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM, syscall.SIGUSR1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM, syscall.SIGUSR1, syscall.SIGHUP)
 
 	for {
 		go func() {
@@ -264,6 +264,27 @@ func runShellInteractive() {
 				}
 				errChan = make(chan error, 2)
 				continue
+			} else if sig == syscall.SIGHUP {
+				if isUnderSystemd() {
+					log.Info("Received SIGHUP under systemd, cleaning up and exiting...")
+					cancel()
+					if cmd.Process != nil {
+						cmd.Process.Kill()
+					}
+					os.Remove(socketPath)
+					os.Exit(0)
+				} else {
+					log.Info("Received SIGHUP, performing full restart...")
+					cancel()
+					if cmd.Process != nil {
+						cmd.Process.Kill()
+					}
+					os.Remove(socketPath)
+					killShell()
+					time.Sleep(500 * time.Millisecond)
+					runShellDaemon()
+					return
+				}
 			} else {
 				log.Infof("\nReceived signal %v, shutting down...", sig)
 				cancel()
@@ -284,24 +305,36 @@ func runShellInteractive() {
 }
 
 func restartShell() {
-	// Prevent duplication
-	if isUnderSystemd() {
-		log.Info("Detected systemd management, delegating restart to systemd...")
-		cmd := exec.Command("systemctl", "--user", "restart", "dms.service")
-		if err := cmd.Run(); err != nil {
-			log.Errorf("Failed to restart via systemd: %v", err)
-			log.Info("Falling back to manual restart...")
-		} else {
-			log.Info("DMS restart initiated via systemd")
-			return
+	pids := getAllDMSPIDs()
+	currentPid := os.Getpid()
+
+	var targetPid int
+	for _, pid := range pids {
+		if pid != currentPid {
+			proc, err := os.FindProcess(pid)
+			if err != nil {
+				continue
+			}
+			if err := proc.Signal(syscall.Signal(0)); err == nil {
+				targetPid = pid
+				break
+			}
 		}
 	}
 
-	log.Info("Performing manual full restart...")
-	killShell()
+	if targetPid > 0 {
+		log.Infof("Found running DMS process (PID: %d), sending SIGHUP...", targetPid)
+		proc, err := os.FindProcess(targetPid)
+		if err == nil {
+			if err := proc.Signal(syscall.SIGHUP); err == nil {
+				log.Info("SIGHUP sent successfully, process will handle restart")
+				return
+			}
+			log.Warnf("Failed to send SIGHUP to PID %d: %v", targetPid, err)
+		}
+	}
 
-	time.Sleep(500 * time.Millisecond)
-
+	log.Info("No running DMS process found, spawning new daemon...")
 	runShellDaemon()
 }
 
@@ -436,7 +469,7 @@ func runShellDaemon() {
 	defer removePIDFile()
 
 	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM, syscall.SIGUSR1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM, syscall.SIGUSR1, syscall.SIGHUP)
 
 	for {
 		go func() {
@@ -465,6 +498,27 @@ func runShellDaemon() {
 				}
 				errChan = make(chan error, 2)
 				continue
+			} else if sig == syscall.SIGHUP {
+				if isUnderSystemd() {
+					log.Info("Received SIGHUP under systemd, cleaning up and exiting...")
+					cancel()
+					if cmd.Process != nil {
+						cmd.Process.Kill()
+					}
+					os.Remove(socketPath)
+					os.Exit(0)
+				} else {
+					log.Info("Received SIGHUP, performing full restart...")
+					cancel()
+					if cmd.Process != nil {
+						cmd.Process.Kill()
+					}
+					os.Remove(socketPath)
+					killShell()
+					time.Sleep(500 * time.Millisecond)
+					runShellDaemon()
+					return
+				}
 			} else {
 				cancel()
 				cmd.Process.Kill()
