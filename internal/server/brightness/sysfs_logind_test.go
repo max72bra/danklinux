@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
-func TestSysfsBackend_SetBrightness_LogindSuccess(t *testing.T) {
+func TestManager_SetBrightness_LogindSuccess(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	backlightDir := filepath.Join(tmpDir, "backlight", "test_backlight")
@@ -30,15 +30,38 @@ func TestSysfsBackend_SetBrightness_LogindSuccess(t *testing.T) {
 
 	mockLogind := NewLogindBackendWithConn(mockConn)
 
-	b := &SysfsBackend{
+	sysfs := &SysfsBackend{
 		basePath:    tmpDir,
 		classes:     []string{"backlight"},
 		deviceCache: make(map[string]*sysfsDevice),
-		logind:      mockLogind,
 	}
 
-	if err := b.scanDevices(); err != nil {
+	if err := sysfs.scanDevices(); err != nil {
 		t.Fatal(err)
+	}
+
+	m := &Manager{
+		logindBackend:     mockLogind,
+		sysfsBackend:      sysfs,
+		logindReady:       true,
+		sysfsReady:        true,
+		subscribers:       make(map[string]chan State),
+		updateSubscribers: make(map[string]chan DeviceUpdate),
+		stopChan:          make(chan struct{}),
+	}
+
+	m.state = State{
+		Devices: []Device{
+			{
+				Class:          ClassBacklight,
+				ID:             "backlight:test_backlight",
+				Name:           "test_backlight",
+				Current:        50,
+				Max:            100,
+				CurrentPercent: 50,
+				Backend:        "sysfs",
+			},
+		},
 	}
 
 	mockConn.EXPECT().
@@ -51,7 +74,7 @@ func TestSysfsBackend_SetBrightness_LogindSuccess(t *testing.T) {
 		Return(&dbus.Call{Err: nil}).
 		Once()
 
-	err := b.SetBrightness("backlight:test_backlight", 75)
+	err := m.SetBrightness("backlight:test_backlight", 75)
 	if err != nil {
 		t.Errorf("SetBrightness() with logind error = %v, want nil", err)
 	}
@@ -62,7 +85,7 @@ func TestSysfsBackend_SetBrightness_LogindSuccess(t *testing.T) {
 	}
 }
 
-func TestSysfsBackend_SetBrightness_LogindFailsFallbackToSysfs(t *testing.T) {
+func TestManager_SetBrightness_LogindFailsFallbackToSysfs(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	backlightDir := filepath.Join(tmpDir, "backlight", "test_backlight")
@@ -81,15 +104,38 @@ func TestSysfsBackend_SetBrightness_LogindFailsFallbackToSysfs(t *testing.T) {
 
 	mockLogind := NewLogindBackendWithConn(mockConn)
 
-	b := &SysfsBackend{
+	sysfs := &SysfsBackend{
 		basePath:    tmpDir,
 		classes:     []string{"backlight"},
 		deviceCache: make(map[string]*sysfsDevice),
-		logind:      mockLogind,
 	}
 
-	if err := b.scanDevices(); err != nil {
+	if err := sysfs.scanDevices(); err != nil {
 		t.Fatal(err)
+	}
+
+	m := &Manager{
+		logindBackend:     mockLogind,
+		sysfsBackend:      sysfs,
+		logindReady:       true,
+		sysfsReady:        true,
+		subscribers:       make(map[string]chan State),
+		updateSubscribers: make(map[string]chan DeviceUpdate),
+		stopChan:          make(chan struct{}),
+	}
+
+	m.state = State{
+		Devices: []Device{
+			{
+				Class:          ClassBacklight,
+				ID:             "backlight:test_backlight",
+				Name:           "test_backlight",
+				Current:        50,
+				Max:            100,
+				CurrentPercent: 50,
+				Backend:        "sysfs",
+			},
+		},
 	}
 
 	mockConn.EXPECT().
@@ -102,7 +148,7 @@ func TestSysfsBackend_SetBrightness_LogindFailsFallbackToSysfs(t *testing.T) {
 		Return(&dbus.Call{Err: dbus.ErrMsgNoObject}).
 		Once()
 
-	err := b.SetBrightness("backlight:test_backlight", 75)
+	err := m.SetBrightness("backlight:test_backlight", 75)
 	if err != nil {
 		t.Errorf("SetBrightness() with fallback error = %v, want nil", err)
 	}
@@ -114,7 +160,7 @@ func TestSysfsBackend_SetBrightness_LogindFailsFallbackToSysfs(t *testing.T) {
 	}
 }
 
-func TestSysfsBackend_SetBrightness_NoLogind(t *testing.T) {
+func TestManager_SetBrightness_NoLogind(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	backlightDir := filepath.Join(tmpDir, "backlight", "test_backlight")
@@ -128,18 +174,41 @@ func TestSysfsBackend_SetBrightness_NoLogind(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	b := &SysfsBackend{
+	sysfs := &SysfsBackend{
 		basePath:    tmpDir,
 		classes:     []string{"backlight"},
 		deviceCache: make(map[string]*sysfsDevice),
-		logind:      nil,
 	}
 
-	if err := b.scanDevices(); err != nil {
+	if err := sysfs.scanDevices(); err != nil {
 		t.Fatal(err)
 	}
 
-	err := b.SetBrightness("backlight:test_backlight", 75)
+	m := &Manager{
+		logindBackend:     nil,
+		sysfsBackend:      sysfs,
+		logindReady:       false,
+		sysfsReady:        true,
+		subscribers:       make(map[string]chan State),
+		updateSubscribers: make(map[string]chan DeviceUpdate),
+		stopChan:          make(chan struct{}),
+	}
+
+	m.state = State{
+		Devices: []Device{
+			{
+				Class:          ClassBacklight,
+				ID:             "backlight:test_backlight",
+				Name:           "test_backlight",
+				Current:        50,
+				Max:            100,
+				CurrentPercent: 50,
+				Backend:        "sysfs",
+			},
+		},
+	}
+
+	err := m.SetBrightness("backlight:test_backlight", 75)
 	if err != nil {
 		t.Errorf("SetBrightness() without logind error = %v, want nil", err)
 	}
@@ -151,7 +220,7 @@ func TestSysfsBackend_SetBrightness_NoLogind(t *testing.T) {
 	}
 }
 
-func TestSysfsBackend_SetBrightness_LEDWithLogind(t *testing.T) {
+func TestManager_SetBrightness_LEDWithLogind(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	ledsDir := filepath.Join(tmpDir, "leds", "test_led")
@@ -170,15 +239,38 @@ func TestSysfsBackend_SetBrightness_LEDWithLogind(t *testing.T) {
 
 	mockLogind := NewLogindBackendWithConn(mockConn)
 
-	b := &SysfsBackend{
+	sysfs := &SysfsBackend{
 		basePath:    tmpDir,
 		classes:     []string{"leds"},
 		deviceCache: make(map[string]*sysfsDevice),
-		logind:      mockLogind,
 	}
 
-	if err := b.scanDevices(); err != nil {
+	if err := sysfs.scanDevices(); err != nil {
 		t.Fatal(err)
+	}
+
+	m := &Manager{
+		logindBackend:     mockLogind,
+		sysfsBackend:      sysfs,
+		logindReady:       true,
+		sysfsReady:        true,
+		subscribers:       make(map[string]chan State),
+		updateSubscribers: make(map[string]chan DeviceUpdate),
+		stopChan:          make(chan struct{}),
+	}
+
+	m.state = State{
+		Devices: []Device{
+			{
+				Class:          ClassLED,
+				ID:             "leds:test_led",
+				Name:           "test_led",
+				Current:        128,
+				Max:            255,
+				CurrentPercent: 50,
+				Backend:        "sysfs",
+			},
+		},
 	}
 
 	mockConn.EXPECT().
@@ -191,7 +283,7 @@ func TestSysfsBackend_SetBrightness_LEDWithLogind(t *testing.T) {
 		Return(&dbus.Call{Err: nil}).
 		Once()
 
-	err := b.SetBrightness("leds:test_led", 0)
+	err := m.SetBrightness("leds:test_led", 0)
 	if err != nil {
 		t.Errorf("SetBrightness() LED with logind error = %v, want nil", err)
 	}

@@ -38,11 +38,13 @@ type Request struct {
 }
 
 type Manager struct {
-	sysfsBackend *SysfsBackend
-	ddcBackend   *DDCBackend
+	logindBackend *LogindBackend
+	sysfsBackend  *SysfsBackend
+	ddcBackend    *DDCBackend
 
-	sysfsReady bool
-	ddcReady   bool
+	logindReady bool
+	sysfsReady  bool
+	ddcReady    bool
 
 	stateMutex sync.RWMutex
 	state      State
@@ -66,8 +68,6 @@ type SysfsBackend struct {
 
 	deviceCache      map[string]*sysfsDevice
 	deviceCacheMutex sync.RWMutex
-
-	logind *LogindBackend
 }
 
 type sysfsDevice struct {
@@ -179,6 +179,10 @@ func (m *Manager) Close() {
 	}
 	m.updateSubscribers = make(map[string]chan DeviceUpdate)
 	m.subMutex.Unlock()
+
+	if m.logindBackend != nil {
+		m.logindBackend.Close()
+	}
 
 	if m.ddcBackend != nil {
 		m.ddcBackend.Close()

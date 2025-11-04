@@ -57,12 +57,15 @@ func (b *DDCBackend) scanI2CDevices() error {
 			continue
 		}
 
-		if dev, err := b.probeDDCDevice(i); err == nil && dev != nil {
-			id := fmt.Sprintf("ddc:i2c-%d", i)
-			dev.id = id
-			b.devices[id] = dev
-			log.Debugf("found DDC device on i2c-%d", i)
+		dev, err := b.probeDDCDevice(i)
+		if err != nil || dev == nil {
+			continue
 		}
+
+		id := fmt.Sprintf("ddc:i2c-%d", i)
+		dev.id = id
+		b.devices[id] = dev
+		log.Debugf("found DDC device on i2c-%d", i)
 	}
 
 	b.lastScan = time.Now()
@@ -88,12 +91,19 @@ func (b *DDCBackend) probeDDCDevice(bus int) (*ddcDevice, error) {
 
 	writebuf := []byte{0x00}
 	n, err := syscall.Write(fd, writebuf)
-	if err != nil || n != len(writebuf) {
-		readbuf := make([]byte, 4)
-		n, err = syscall.Read(fd, readbuf)
-		if err != nil || n == 0 {
-			return nil, fmt.Errorf("x37 unresponsive")
-		}
+	if err == nil && n == len(writebuf) {
+		name := b.getDDCName(bus)
+		return &ddcDevice{
+			bus:  bus,
+			addr: DDCCI_ADDR,
+			name: name,
+		}, nil
+	}
+
+	readbuf := make([]byte, 4)
+	n, err = syscall.Read(fd, readbuf)
+	if err != nil || n == 0 {
+		return nil, fmt.Errorf("x37 unresponsive")
 	}
 
 	name := b.getDDCName(bus)
@@ -217,7 +227,8 @@ func (b *DDCBackend) SetBrightness(id string, percent int) error {
 			return
 		}
 
-		if err := b.setBrightnessImmediate(id, pendingPercent); err != nil {
+		err := b.setBrightnessImmediate(id, pendingPercent)
+		if err != nil {
 			log.Debugf("Failed to set brightness for %s: %v", id, err)
 		}
 	})
