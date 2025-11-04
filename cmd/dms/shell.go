@@ -41,10 +41,10 @@ func runDetachedRestart(targetPIDStr string) {
 
 	proc, err := os.FindProcess(targetPID)
 	if err == nil {
-		proc.Kill()
+		proc.Signal(syscall.SIGTERM)
 	}
 
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(500 * time.Millisecond)
 
 	killShell()
 	runShellDaemon(false)
@@ -220,30 +220,31 @@ func runShellInteractive(session bool) {
 		}
 	}()
 
-	select {
-	case sig := <-sigChan:
-		if sig == syscall.SIGHUP {
-			if isSessionManaged {
-				cancel()
-				cmd.Process.Kill()
-				os.Remove(socketPath)
-			} else {
+	for {
+		select {
+		case sig := <-sigChan:
+			// Handle SIGHUP restart for non-session managed processes
+			if sig == syscall.SIGHUP && !isSessionManaged {
 				execDetachedRestart(os.Getpid())
+				continue // Wait for SIGTERM from detached restart
 			}
-		} else {
+
+			// All other signals: clean shutdown
 			log.Infof("\nReceived signal %v, shutting down...", sig)
 			cancel()
-			cmd.Process.Kill()
+			cmd.Process.Signal(syscall.SIGTERM)
 			os.Remove(socketPath)
+			return
+
+		case err := <-errChan:
+			log.Error(err)
+			cancel()
+			if cmd.Process != nil {
+				cmd.Process.Signal(syscall.SIGTERM)
+			}
+			os.Remove(socketPath)
+			os.Exit(1)
 		}
-	case err := <-errChan:
-		log.Error(err)
-		cancel()
-		if cmd.Process != nil {
-			cmd.Process.Kill()
-		}
-		os.Remove(socketPath)
-		os.Exit(1)
 	}
 }
 
@@ -426,28 +427,29 @@ func runShellDaemon(session bool) {
 		}
 	}()
 
-	select {
-	case sig := <-sigChan:
-		if sig == syscall.SIGHUP {
-			if isSessionManaged {
-				cancel()
-				cmd.Process.Kill()
-				os.Remove(socketPath)
-			} else {
+	for {
+		select {
+		case sig := <-sigChan:
+			// Handle SIGHUP restart for non-session managed processes
+			if sig == syscall.SIGHUP && !isSessionManaged {
 				execDetachedRestart(os.Getpid())
+				continue // Wait for SIGTERM from detached restart
 			}
-		} else {
+
+			// All other signals: clean shutdown
 			cancel()
-			cmd.Process.Kill()
+			cmd.Process.Signal(syscall.SIGTERM)
 			os.Remove(socketPath)
+			return
+
+		case <-errChan:
+			cancel()
+			if cmd.Process != nil {
+				cmd.Process.Signal(syscall.SIGTERM)
+			}
+			os.Remove(socketPath)
+			os.Exit(1)
 		}
-	case <-errChan:
-		cancel()
-		if cmd.Process != nil {
-			cmd.Process.Kill()
-		}
-		os.Remove(socketPath)
-		os.Exit(1)
 	}
 }
 
