@@ -187,7 +187,7 @@ func (g *GentooDistribution) getQuickshellMapping(variant deps.PackageVariant) P
 	return PackageMapping{Name: "gui-apps/quickshell", Repository: RepoTypeGURU}
 }
 
-func (g *GentooDistribution) getDmsMapping(variant deps.PackageVariant) PackageMapping {
+func (g *GentooDistribution) getDmsMapping(_ deps.PackageVariant) PackageMapping {
 	return PackageMapping{Name: "dms", Repository: RepoTypeManual, BuildFunc: "installDankMaterialShell"}
 }
 
@@ -198,7 +198,7 @@ func (g *GentooDistribution) getHyprlandMapping(variant deps.PackageVariant) Pac
 	return PackageMapping{Name: "gui-wm/hyprland", Repository: RepoTypeSystem}
 }
 
-func (g *GentooDistribution) getHyprpickerMapping(variant deps.PackageVariant) PackageMapping {
+func (g *GentooDistribution) getHyprpickerMapping(_ deps.PackageVariant) PackageMapping {
 	return PackageMapping{Name: "gui-apps/hyprpicker", Repository: RepoTypeGURU}
 }
 
