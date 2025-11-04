@@ -76,7 +76,7 @@ func TestSysfsBackend_PercentConversions(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := b.percentToValue(tt.percent, tt.device)
+			got := b.PercentToValue(tt.percent, tt.device, false)
 			diff := got - tt.wantValue
 			if diff < 0 {
 				diff = -diff
@@ -85,8 +85,7 @@ func TestSysfsBackend_PercentConversions(t *testing.T) {
 				t.Errorf("percentToValue() = %v, want %v (±%d)", got, tt.wantValue, tt.tolerance)
 			}
 
-			// Round trip test - skip for LEDs at 1% since they may round down to 0
-			gotPercent := b.valueToPercent(got, tt.device)
+			gotPercent := b.ValueToPercent(got, tt.device, false)
 			if tt.percent > 1 && gotPercent == 0 {
 				t.Errorf("valueToPercent() returned 0 for non-zero input (percent=%d, got value=%d)", tt.percent, got)
 			}
@@ -125,7 +124,7 @@ func TestSysfsBackend_ValueToPercent(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := b.valueToPercent(tt.value, tt.device)
+			got := b.ValueToPercent(tt.value, tt.device, false)
 			if got != tt.wantPercent {
 				t.Errorf("valueToPercent() = %v, want %v", got, tt.wantPercent)
 			}

@@ -10,10 +10,15 @@ import (
 )
 
 func NewManager() (*Manager, error) {
+	return NewManagerWithOptions(false)
+}
+
+func NewManagerWithOptions(logarithmic bool) (*Manager, error) {
 	m := &Manager{
 		subscribers:       make(map[string]chan State),
 		updateSubscribers: make(map[string]chan DeviceUpdate),
 		stopChan:          make(chan struct{}),
+		logarithmic:       logarithmic,
 	}
 
 	go m.initLogind()
@@ -166,49 +171,47 @@ func (m *Manager) updateState() {
 }
 
 func (m *Manager) SetBrightness(deviceID string, percent int) error {
+	return m.SetBrightnessWithMode(deviceID, percent, m.logarithmic)
+}
+
+func (m *Manager) SetBrightnessWithMode(deviceID string, percent int, logarithmic bool) error {
 	if percent < 0 || percent > 100 {
 		return fmt.Errorf("percent out of range: %d", percent)
 	}
 
 	log.Debugf("SetBrightness: %s to %d%%", deviceID, percent)
 
-	m.stateMutex.Lock()
+	m.stateMutex.RLock()
 	currentState := m.state
 	var found bool
 	var deviceClass DeviceClass
-	var deviceIndex int
 
 	log.Debugf("Current state has %d devices", len(currentState.Devices))
 
-	for i, dev := range currentState.Devices {
+	for _, dev := range currentState.Devices {
 		if dev.ID == deviceID {
 			found = true
 			deviceClass = dev.Class
-			deviceIndex = i
 			break
 		}
 	}
+	m.stateMutex.RUnlock()
 
 	if !found {
-		m.stateMutex.Unlock()
 		log.Debugf("Device not found in state: %s", deviceID)
 		return fmt.Errorf("device not found: %s", deviceID)
 	}
 
-	log.Debugf("Updating cached state for %s from %d%% to %d%%", deviceID, m.state.Devices[deviceIndex].CurrentPercent, percent)
-	m.state.Devices[deviceIndex].CurrentPercent = percent
-	m.stateMutex.Unlock()
-
 	var err error
 	if deviceClass == ClassDDC {
 		log.Debugf("Calling DDC backend for %s", deviceID)
-		err = m.ddcBackend.SetBrightness(deviceID, percent)
+		err = m.ddcBackend.SetBrightness(deviceID, percent, logarithmic)
 	} else if m.logindReady && m.logindBackend != nil {
 		log.Debugf("Calling logind backend for %s", deviceID)
-		err = m.setViaSysfsWithLogind(deviceID, percent)
+		err = m.setViaSysfsWithLogind(deviceID, percent, logarithmic)
 	} else {
 		log.Debugf("Calling sysfs backend for %s", deviceID)
-		err = m.sysfsBackend.SetBrightness(deviceID, percent)
+		err = m.sysfsBackend.SetBrightness(deviceID, percent, logarithmic)
 	}
 
 	if err != nil {
@@ -216,7 +219,7 @@ func (m *Manager) SetBrightness(deviceID string, percent int) error {
 	}
 
 	log.Debugf("Queueing broadcast for %s", deviceID)
-	m.debouncedBroadcast(deviceID, deviceClass, percent)
+	m.debouncedBroadcast(deviceID)
 	return nil
 }
 
@@ -255,7 +258,7 @@ func (m *Manager) DecrementBrightness(deviceID string, step int) error {
 	return m.IncrementBrightness(deviceID, -step)
 }
 
-func (m *Manager) setViaSysfsWithLogind(deviceID string, percent int) error {
+func (m *Manager) setViaSysfsWithLogind(deviceID string, percent int, logarithmic bool) error {
 	parts := strings.SplitN(deviceID, ":", 2)
 	if len(parts) != 2 {
 		return fmt.Errorf("invalid device id: %s", deviceID)
@@ -264,28 +267,28 @@ func (m *Manager) setViaSysfsWithLogind(deviceID string, percent int) error {
 	subsystem := parts[0]
 	name := parts[1]
 
-	dev, err := m.sysfsBackend.getDevice(deviceID)
+	dev, err := m.sysfsBackend.GetDevice(deviceID)
 	if err != nil {
 		return err
 	}
 
-	value := m.sysfsBackend.percentToValue(percent, dev)
+	value := m.sysfsBackend.PercentToValue(percent, dev, logarithmic)
 
 	if m.logindBackend == nil {
-		return m.sysfsBackend.SetBrightness(deviceID, percent)
+		return m.sysfsBackend.SetBrightness(deviceID, percent, logarithmic)
 	}
 
 	err = m.logindBackend.SetBrightness(subsystem, name, uint32(value))
 	if err != nil {
 		log.Debugf("logind SetBrightness failed, falling back to direct sysfs: %v", err)
-		return m.sysfsBackend.SetBrightness(deviceID, percent)
+		return m.sysfsBackend.SetBrightness(deviceID, percent, logarithmic)
 	}
 
 	log.Debugf("set %s to %d%% (%d/%d) via logind", deviceID, percent, value, dev.maxBrightness)
 	return nil
 }
 
-func (m *Manager) debouncedBroadcast(deviceID string, deviceClass DeviceClass, percent int) {
+func (m *Manager) debouncedBroadcast(deviceID string) {
 	m.broadcastMutex.Lock()
 	defer m.broadcastMutex.Unlock()
 

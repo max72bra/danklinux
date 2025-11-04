@@ -46,6 +46,8 @@ type Manager struct {
 	sysfsReady  bool
 	ddcReady    bool
 
+	logarithmic bool
+
 	stateMutex sync.RWMutex
 	state      State
 
@@ -106,8 +108,9 @@ type ddcCapability struct {
 }
 
 type SetBrightnessParams struct {
-	Device  string `json:"device"`
-	Percent int    `json:"percent"`
+	Device      string `json:"device"`
+	Percent     int    `json:"percent"`
+	Logarithmic bool   `json:"logarithmic,omitempty"`
 }
 
 func (m *Manager) Subscribe(id string) chan State {

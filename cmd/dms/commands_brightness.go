@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/AvengeMedia/danklinux/internal/log"
@@ -41,6 +42,7 @@ var brightnessGetCmd = &cobra.Command{
 func init() {
 	brightnessListCmd.Flags().Bool("ddc", false, "Include DDC/I2C monitors (slower)")
 	brightnessSetCmd.Flags().Bool("ddc", false, "Include DDC/I2C monitors (slower)")
+	brightnessSetCmd.Flags().Bool("logarithmic", false, "Use logarithmic brightness scaling")
 	brightnessGetCmd.Flags().Bool("ddc", false, "Include DDC/I2C monitors (slower)")
 
 	brightnessCmd.SetHelpTemplate(`{{.Long}}
@@ -186,24 +188,71 @@ func runBrightnessSet(cmd *cobra.Command, args []string) {
 	}
 
 	includeDDC, _ := cmd.Flags().GetBool("ddc")
+	logarithmic, _ := cmd.Flags().GetBool("logarithmic")
 
-	sysfs, err := brightness.NewSysfsBackend()
-	if err == nil {
-		if err := sysfs.SetBrightness(deviceID, percent); err == nil {
-			fmt.Printf("Set %s to %d%%\n", deviceID, percent)
-			return
+	// For backlight/leds devices, try logind backend first (requires D-Bus connection)
+	parts := strings.SplitN(deviceID, ":", 2)
+	if len(parts) == 2 && (parts[0] == "backlight" || parts[0] == "leds") {
+		subsystem := parts[0]
+		name := parts[1]
+
+		// Initialize backends needed for logind approach
+		sysfs, err := brightness.NewSysfsBackend()
+		if err != nil {
+			log.Debugf("NewSysfsBackend failed: %v", err)
+		} else {
+			logind, err := brightness.NewLogindBackend()
+			if err != nil {
+				log.Debugf("NewLogindBackend failed: %v", err)
+			} else {
+				defer logind.Close()
+
+				// Get device info to convert percent to value
+				dev, err := sysfs.GetDevice(deviceID)
+				if err == nil {
+					// Calculate hardware value using the same logic as Manager.setViaSysfsWithLogind
+					value := sysfs.PercentToValue(percent, dev, logarithmic)
+
+					// Call logind with hardware value
+					if err := logind.SetBrightness(subsystem, name, uint32(value)); err == nil {
+						log.Debugf("set %s to %d%% (%d) via logind", deviceID, percent, value)
+						fmt.Printf("Set %s to %d%%\n", deviceID, percent)
+						return
+					} else {
+						log.Debugf("logind.SetBrightness failed: %v", err)
+					}
+				} else {
+					log.Debugf("sysfs.GetDeviceByID failed: %v", err)
+				}
+			}
 		}
 	}
 
+	// Fallback to direct sysfs (requires write permissions)
+	sysfs, err := brightness.NewSysfsBackend()
+	if err == nil {
+		if err := sysfs.SetBrightness(deviceID, percent, logarithmic); err == nil {
+			fmt.Printf("Set %s to %d%%\n", deviceID, percent)
+			return
+		}
+		log.Debugf("sysfs.SetBrightness failed: %v", err)
+	} else {
+		log.Debugf("NewSysfsBackend failed: %v", err)
+	}
+
+	// Try DDC if requested
 	if includeDDC {
 		ddc, err := brightness.NewDDCBackend()
 		if err == nil {
 			defer ddc.Close()
 			time.Sleep(100 * time.Millisecond)
-			if err := ddc.SetBrightness(deviceID, percent); err == nil {
+			if err := ddc.SetBrightness(deviceID, percent, logarithmic); err == nil {
 				fmt.Printf("Set %s to %d%%\n", deviceID, percent)
 				return
 			}
+			log.Debugf("ddc.SetBrightness failed: %v", err)
+		} else {
+			log.Debugf("NewDDCBackend failed: %v", err)
 		}
 	}
 

@@ -41,8 +41,7 @@ func TestDDCBackend_PercentConversions(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := b.percentToValue(tt.percent, tt.max)
-			// Allow some tolerance due to integer division
+			got := b.percentToValue(tt.percent, tt.max, false)
 			diff := got - tt.wantValue
 			if diff < 0 {
 				diff = -diff
@@ -96,7 +95,7 @@ func TestDDCBackend_ValueToPercent(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := b.valueToPercent(tt.value, tt.max)
+			got := b.valueToPercent(tt.value, tt.max, false)
 			diff := got - tt.wantPercent
 			if diff < 0 {
 				diff = -diff
@@ -125,8 +124,8 @@ func TestDDCBackend_RoundTrip(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			value := b.percentToValue(tt.percent, tt.max)
-			gotPercent := b.valueToPercent(value, tt.max)
+			value := b.percentToValue(tt.percent, tt.max, false)
+			gotPercent := b.valueToPercent(value, tt.max, false)
 
 			if diff := tt.percent - gotPercent; diff < -1 || diff > 1 {
 				t.Errorf("round trip failed: wanted %d%%, got %d%% (value=%d)", tt.percent, gotPercent, value)

@@ -48,7 +48,11 @@ func handleSetBrightness(conn net.Conn, req Request, m *Manager) {
 	}
 	params.Percent = int(percentFloat)
 
-	if err := m.SetBrightness(params.Device, params.Percent); err != nil {
+	if logarithmic, ok := req.Params["logarithmic"].(bool); ok {
+		params.Logarithmic = logarithmic
+	}
+
+	if err := m.SetBrightnessWithMode(params.Device, params.Percent, params.Logarithmic); err != nil {
 		models.RespondError(conn, req.ID.(int), err.Error())
 		return
 	}

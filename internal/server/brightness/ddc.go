@@ -3,6 +3,7 @@ package brightness
 import (
 	"encoding/binary"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -177,7 +178,7 @@ func (b *DDCBackend) GetDevices() ([]Device, error) {
 			dev.max = cap.max
 		}
 
-		percent := b.valueToPercent(cap.current, cap.max)
+		percent := b.valueToPercent(cap.current, cap.max, false)
 
 		devices = append(devices, Device{
 			Class:          ClassDDC,
@@ -193,7 +194,7 @@ func (b *DDCBackend) GetDevices() ([]Device, error) {
 	return devices, nil
 }
 
-func (b *DDCBackend) SetBrightness(id string, percent int) error {
+func (b *DDCBackend) SetBrightness(id string, percent int, logarithmic bool) error {
 	b.devicesMutex.RLock()
 	_, ok := b.devices[id]
 	b.devicesMutex.RUnlock()
@@ -227,7 +228,7 @@ func (b *DDCBackend) SetBrightness(id string, percent int) error {
 			return
 		}
 
-		err := b.setBrightnessImmediate(id, pendingPercent)
+		err := b.setBrightnessImmediate(id, pendingPercent, logarithmic)
 		if err != nil {
 			log.Debugf("Failed to set brightness for %s: %v", id, err)
 		}
@@ -236,7 +237,7 @@ func (b *DDCBackend) SetBrightness(id string, percent int) error {
 	return nil
 }
 
-func (b *DDCBackend) setBrightnessImmediate(id string, percent int) error {
+func (b *DDCBackend) setBrightnessImmediate(id string, percent int, logarithmic bool) error {
 	b.devicesMutex.RLock()
 	dev, ok := b.devices[id]
 	b.devicesMutex.RUnlock()
@@ -269,7 +270,7 @@ func (b *DDCBackend) setBrightnessImmediate(id string, percent int) error {
 		b.devicesMutex.Unlock()
 	}
 
-	value := b.percentToValue(percent, max)
+	value := b.percentToValue(percent, max, logarithmic)
 
 	if err := b.setVCPFeature(fd, VCP_BRIGHTNESS, value); err != nil {
 		return fmt.Errorf("set vcp feature: %w", err)
@@ -400,17 +401,24 @@ func (b *DDCBackend) setVCPFeature(fd int, vcp byte, value int) error {
 	return nil
 }
 
-func (b *DDCBackend) percentToValue(percent int, max int) int {
+func (b *DDCBackend) percentToValue(percent int, max int, logarithmic bool) int {
 	const minValue = 1
 
-	// DDC devices must stay at minimum 1
 	if percent == 0 {
 		return minValue
 	}
 
-	// Map 1-100% to minValue-max range
 	usableRange := max - minValue
-	value := minValue + ((percent - 1) * usableRange / 99)
+	var value int
+
+	if logarithmic {
+		const exponent = 2.0
+		normalizedPercent := float64(percent) / 100.0
+		hardwarePercent := math.Pow(normalizedPercent, 1.0/exponent)
+		value = minValue + int(math.Round(hardwarePercent*float64(usableRange)))
+	} else {
+		value = minValue + ((percent - 1) * usableRange / 99)
+	}
 
 	if value < minValue {
 		value = minValue
@@ -422,25 +430,33 @@ func (b *DDCBackend) percentToValue(percent int, max int) int {
 	return value
 }
 
-func (b *DDCBackend) valueToPercent(value int, max int) int {
+func (b *DDCBackend) valueToPercent(value int, max int, logarithmic bool) int {
 	const minValue = 1
 
 	if max == 0 {
 		return 0
 	}
 
-	// Handle minimum value
 	if value <= minValue {
 		return 1
 	}
 
-	// Map minValue-max range to 1-100%
 	usableRange := max - minValue
 	if usableRange == 0 {
 		return 100
 	}
 
-	percent := 1 + ((value - minValue) * 99 / usableRange)
+	var percent int
+
+	if logarithmic {
+		const exponent = 2.0
+		linearPercent := 1 + ((value - minValue) * 99 / usableRange)
+		normalizedLinear := float64(linearPercent) / 100.0
+		logPercent := math.Pow(normalizedLinear, exponent)
+		percent = int(math.Round(logPercent * 100.0))
+	} else {
+		percent = 1 + ((value - minValue) * 99 / usableRange)
+	}
 
 	if percent > 100 {
 		percent = 100

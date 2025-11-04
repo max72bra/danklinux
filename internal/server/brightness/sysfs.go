@@ -2,6 +2,7 @@ package brightness
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -112,7 +113,7 @@ func (b *SysfsBackend) GetDevices() ([]Device, error) {
 			continue
 		}
 
-		percent := b.valueToPercent(current, dev)
+		percent := b.ValueToPercent(current, dev, false)
 
 		devices = append(devices, Device{
 			Class:          dev.class,
@@ -128,7 +129,7 @@ func (b *SysfsBackend) GetDevices() ([]Device, error) {
 	return devices, nil
 }
 
-func (b *SysfsBackend) getDevice(id string) (*sysfsDevice, error) {
+func (b *SysfsBackend) GetDevice(id string) (*sysfsDevice, error) {
 	b.deviceCacheMutex.RLock()
 	defer b.deviceCacheMutex.RUnlock()
 
@@ -140,8 +141,8 @@ func (b *SysfsBackend) getDevice(id string) (*sysfsDevice, error) {
 	return dev, nil
 }
 
-func (b *SysfsBackend) SetBrightness(id string, percent int) error {
-	dev, err := b.getDevice(id)
+func (b *SysfsBackend) SetBrightness(id string, percent int, logarithmic bool) error {
+	dev, err := b.GetDevice(id)
 	if err != nil {
 		return err
 	}
@@ -150,7 +151,7 @@ func (b *SysfsBackend) SetBrightness(id string, percent int) error {
 		return fmt.Errorf("percent out of range: %d", percent)
 	}
 
-	value := b.percentToValue(percent, dev)
+	value := b.PercentToValue(percent, dev, logarithmic)
 
 	parts := strings.SplitN(id, ":", 2)
 	if len(parts) != 2 {
@@ -173,15 +174,22 @@ func (b *SysfsBackend) SetBrightness(id string, percent int) error {
 	return nil
 }
 
-func (b *SysfsBackend) percentToValue(percent int, dev *sysfsDevice) int {
-	// LEDs can go to 0, backlight devices must stay at minimum 1
+func (b *SysfsBackend) PercentToValue(percent int, dev *sysfsDevice, logarithmic bool) int {
 	if percent == 0 {
 		return dev.minValue
 	}
 
-	// Map 1-100% to minValue-maxBrightness range
 	usableRange := dev.maxBrightness - dev.minValue
-	value := dev.minValue + ((percent - 1) * usableRange / 99)
+	var value int
+
+	if logarithmic {
+		const exponent = 2.0
+		normalizedPercent := float64(percent) / 100.0
+		hardwarePercent := math.Pow(normalizedPercent, 1.0/exponent)
+		value = dev.minValue + int(math.Round(hardwarePercent*float64(usableRange)))
+	} else {
+		value = dev.minValue + ((percent - 1) * usableRange / 99)
+	}
 
 	if value < dev.minValue {
 		value = dev.minValue
@@ -193,8 +201,7 @@ func (b *SysfsBackend) percentToValue(percent int, dev *sysfsDevice) int {
 	return value
 }
 
-func (b *SysfsBackend) valueToPercent(value int, dev *sysfsDevice) int {
-	// Handle minimum values
+func (b *SysfsBackend) ValueToPercent(value int, dev *sysfsDevice, logarithmic bool) int {
 	if value <= dev.minValue {
 		if dev.minValue == 0 && value == 0 {
 			return 0
@@ -202,13 +209,22 @@ func (b *SysfsBackend) valueToPercent(value int, dev *sysfsDevice) int {
 		return 1
 	}
 
-	// Map minValue-maxBrightness range to 1-100%
 	usableRange := dev.maxBrightness - dev.minValue
 	if usableRange == 0 {
 		return 100
 	}
 
-	percent := 1 + ((value - dev.minValue) * 99 / usableRange)
+	var percent int
+
+	if logarithmic {
+		const exponent = 2.0
+		linearPercent := 1 + ((value - dev.minValue) * 99 / usableRange)
+		normalizedLinear := float64(linearPercent) / 100.0
+		logPercent := math.Pow(normalizedLinear, exponent)
+		percent = int(math.Round(logPercent * 100.0))
+	} else {
+		percent = 1 + ((value - dev.minValue) * 99 / usableRange)
+	}
 
 	if percent > 100 {
 		percent = 100
