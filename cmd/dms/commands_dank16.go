@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
@@ -24,6 +23,7 @@ func init() {
 	dank16Cmd.Flags().Bool("kitty", false, "Output in Kitty terminal format")
 	dank16Cmd.Flags().Bool("foot", false, "Output in Foot terminal format")
 	dank16Cmd.Flags().Bool("alacritty", false, "Output in Alacritty terminal format")
+	dank16Cmd.Flags().Bool("ghostty", false, "Output in Ghostty terminal format")
 	dank16Cmd.Flags().Bool("vscode", false, "Output as VSCode theme JSON")
 	dank16Cmd.Flags().String("vscode-enrich", "", "Enrich existing VSCode theme file with terminal colors")
 	dank16Cmd.Flags().String("honor-primary", "", "Honor primary color for specific palette positions")
@@ -41,7 +41,7 @@ func runDank16(cmd *cobra.Command, args []string) {
 	isKitty, _ := cmd.Flags().GetBool("kitty")
 	isFoot, _ := cmd.Flags().GetBool("foot")
 	isAlacritty, _ := cmd.Flags().GetBool("alacritty")
-	isVSCode, _ := cmd.Flags().GetBool("vscode")
+	isGhostty, _ := cmd.Flags().GetBool("ghostty")
 	vscodeEnrich, _ := cmd.Flags().GetString("vscode-enrich")
 	honorPrimary, _ := cmd.Flags().GetString("honor-primary")
 	background, _ := cmd.Flags().GetString("background")
@@ -69,14 +69,7 @@ func runDank16(cmd *cobra.Command, args []string) {
 
 	colors := dank16.GeneratePalette(baseColor, opts)
 
-	if isVSCode {
-		theme := dank16.GenerateVSCodeTheme(colors, isLight)
-		output, err := json.MarshalIndent(theme, "", "  ")
-		if err != nil {
-			log.Fatalf("Error generating VSCode theme: %v", err)
-		}
-		fmt.Println(string(output))
-	} else if vscodeEnrich != "" {
+	if vscodeEnrich != "" {
 		data, err := os.ReadFile(vscodeEnrich)
 		if err != nil {
 			log.Fatalf("Error reading file: %v", err)
@@ -88,62 +81,14 @@ func runDank16(cmd *cobra.Command, args []string) {
 		}
 		fmt.Println(string(enriched))
 	} else if isKitty {
-		kittyColors := []struct {
-			name  string
-			color string
-		}{
-			{"color0", colors[0]},
-			{"color1", colors[1]},
-			{"color2", colors[2]},
-			{"color3", colors[3]},
-			{"color4", colors[4]},
-			{"color5", colors[5]},
-			{"color6", colors[6]},
-			{"color7", colors[7]},
-			{"color8", colors[8]},
-			{"color9", colors[9]},
-			{"color10", colors[10]},
-			{"color11", colors[11]},
-			{"color12", colors[12]},
-			{"color13", colors[13]},
-			{"color14", colors[14]},
-			{"color15", colors[15]},
-		}
-
-		for _, kc := range kittyColors {
-			fmt.Printf("%s   %s\n", kc.name, kc.color)
-		}
+		fmt.Print(dank16.GenerateKittyTheme(colors))
 	} else if isFoot {
-		footColors := []struct {
-			name  string
-			index int
-		}{
-			{"regular0", 0},
-			{"regular1", 1},
-			{"regular2", 2},
-			{"regular3", 3},
-			{"regular4", 4},
-			{"regular5", 5},
-			{"regular6", 6},
-			{"regular7", 7},
-			{"bright0", 8},
-			{"bright1", 9},
-			{"bright2", 10},
-			{"bright3", 11},
-			{"bright4", 12},
-			{"bright5", 13},
-			{"bright6", 14},
-			{"bright7", 15},
-		}
-
-		for _, fc := range footColors {
-			fmt.Printf("%s=%s\n", fc.name, strings.TrimPrefix(colors[fc.index], "#"))
-		}
+		fmt.Print(dank16.GenerateFootTheme(colors))
 	} else if isAlacritty {
 		fmt.Print(dank16.GenerateAlacrittyTheme(colors))
+	} else if isGhostty {
+		fmt.Print(dank16.GenerateGhosttyTheme(colors))
 	} else {
-		for i, color := range colors {
-			fmt.Printf("palette = %d=%s\n", i, color)
-		}
+		fmt.Print(dank16.GenerateGhosttyTheme(colors))
 	}
 }
