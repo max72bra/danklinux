@@ -22,10 +22,11 @@ var runCmd = &cobra.Command{
 	Long:  "Launch quickshell with DMS configuration (qs -c dms)",
 	Run: func(cmd *cobra.Command, args []string) {
 		daemon, _ := cmd.Flags().GetBool("daemon")
+		session, _ := cmd.Flags().GetBool("session")
 		if daemon {
-			runShellDaemon()
+			runShellDaemon(session)
 		} else {
-			runShellInteractive()
+			runShellInteractive(session)
 		}
 	},
 }

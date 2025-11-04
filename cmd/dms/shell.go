@@ -16,9 +16,7 @@ import (
 	"github.com/AvengeMedia/danklinux/internal/server"
 )
 
-func isRunningUnderSystemd() bool {
-	return os.Getenv("DMS_SYSTEMD") == "1"
-}
+var isSessionManaged bool
 
 func execDetachedRestart(targetPID int) {
 	selfPath, err := os.Executable()
@@ -49,7 +47,7 @@ func runDetachedRestart(targetPIDStr string) {
 	time.Sleep(100 * time.Millisecond)
 
 	killShell()
-	runShellDaemon()
+	runShellDaemon(false)
 }
 
 func locateDMSConfig() (string, error) {
@@ -167,7 +165,8 @@ func getAllDMSPIDs() []int {
 	return pids
 }
 
-func runShellInteractive() {
+func runShellInteractive(session bool) {
+	isSessionManaged = session
 	go printASCII()
 	fmt.Fprintf(os.Stderr, "dms %s\n", Version)
 
@@ -224,7 +223,7 @@ func runShellInteractive() {
 	select {
 	case sig := <-sigChan:
 		if sig == syscall.SIGHUP {
-			if isRunningUnderSystemd() {
+			if isSessionManaged {
 				cancel()
 				cmd.Process.Kill()
 				os.Remove(socketPath)
@@ -253,7 +252,7 @@ func restartShell() {
 
 	if len(pids) == 0 {
 		log.Info("No running DMS shell instances found. Starting daemon...")
-		runShellDaemon()
+		runShellDaemon(false)
 		return
 	}
 
@@ -339,7 +338,8 @@ func killShell() {
 	}
 }
 
-func runShellDaemon() {
+func runShellDaemon(session bool) {
+	isSessionManaged = session
 	// Check if this is the daemon child process by looking for the hidden flag
 	isDaemonChild := false
 	for _, arg := range os.Args {
@@ -429,7 +429,7 @@ func runShellDaemon() {
 	select {
 	case sig := <-sigChan:
 		if sig == syscall.SIGHUP {
-			if isRunningUnderSystemd() {
+			if isSessionManaged {
 				cancel()
 				cmd.Process.Kill()
 				os.Remove(socketPath)
