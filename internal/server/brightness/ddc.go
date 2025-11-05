@@ -142,23 +142,50 @@ func (b *DDCBackend) GetDevices() ([]Device, error) {
 		log.Debugf("DDC scan error: %v", err)
 	}
 
-	b.devicesMutex.RLock()
-	defer b.devicesMutex.RUnlock()
-
-	devices := make([]Device, 0, len(b.devices))
-
+	b.devicesMutex.Lock()
+	devSnapshot := make(map[string]*ddcDevice)
 	for id, dev := range b.devices {
+		devCopy := *dev
+		devSnapshot[id] = &devCopy
+	}
+	b.devicesMutex.Unlock()
+
+	devices := make([]Device, 0, len(devSnapshot))
+
+	for id, dev := range devSnapshot {
 		busPath := fmt.Sprintf("/dev/i2c-%d", dev.bus)
 
 		fd, err := syscall.Open(busPath, syscall.O_RDWR, 0)
 		if err != nil {
 			log.Debugf("failed to open %s: %v", busPath, err)
+			if dev.max > 0 {
+				devices = append(devices, Device{
+					Class:          ClassDDC,
+					ID:             id,
+					Name:           dev.name,
+					Current:        0,
+					Max:            dev.max,
+					CurrentPercent: 0,
+					Backend:        "ddc",
+				})
+			}
 			continue
 		}
 
 		if _, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(fd), I2C_SLAVE, uintptr(dev.addr)); errno != 0 {
 			syscall.Close(fd)
 			log.Debugf("failed to set i2c slave addr for %s: %v", id, errno)
+			if dev.max > 0 {
+				devices = append(devices, Device{
+					Class:          ClassDDC,
+					ID:             id,
+					Name:           dev.name,
+					Current:        0,
+					Max:            dev.max,
+					CurrentPercent: 0,
+					Backend:        "ddc",
+				})
+			}
 			continue
 		}
 
@@ -177,11 +204,27 @@ func (b *DDCBackend) GetDevices() ([]Device, error) {
 
 		if vcpErr != nil {
 			log.Debugf("failed to get brightness for %s after retries: %v", id, vcpErr)
+			if dev.max > 0 {
+				devices = append(devices, Device{
+					Class:          ClassDDC,
+					ID:             id,
+					Name:           dev.name,
+					Current:        0,
+					Max:            dev.max,
+					CurrentPercent: 0,
+					Backend:        "ddc",
+				})
+			}
 			continue
 		}
 
-		if dev.max == 0 {
+		if dev.max == 0 && cap.max > 0 {
 			dev.max = cap.max
+			b.devicesMutex.Lock()
+			if origDev, ok := b.devices[id]; ok {
+				origDev.max = cap.max
+			}
+			b.devicesMutex.Unlock()
 		}
 
 		devices = append(devices, Device{
@@ -189,7 +232,7 @@ func (b *DDCBackend) GetDevices() ([]Device, error) {
 			ID:             id,
 			Name:           dev.name,
 			Current:        cap.current,
-			Max:            cap.max,
+			Max:            dev.max,
 			CurrentPercent: cap.current,
 			Backend:        "ddc",
 		})
@@ -200,15 +243,15 @@ func (b *DDCBackend) GetDevices() ([]Device, error) {
 
 func (b *DDCBackend) SetBrightness(id string, value int, exponential bool, callback func()) error {
 	b.devicesMutex.RLock()
-	dev, ok := b.devices[id]
+	_, ok := b.devices[id]
 	b.devicesMutex.RUnlock()
 
 	if !ok {
 		return fmt.Errorf("device not found: %s", id)
 	}
 
-	if value < 0 || value > dev.max {
-		return fmt.Errorf("value out of range: %d (max: %d)", value, dev.max)
+	if value < 0 || value > 100 {
+		return fmt.Errorf("value out of range: %d", value)
 	}
 
 	b.debounceMutex.Lock()
