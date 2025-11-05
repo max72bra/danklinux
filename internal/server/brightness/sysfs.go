@@ -83,6 +83,28 @@ func (b *SysfsBackend) scanDevices() error {
 	return nil
 }
 
+func shouldSuppressDevice(name string) bool {
+	if strings.HasSuffix(name, "::lan") {
+		return true
+	}
+
+	keyboardLEDs := []string{
+		"::scrolllock",
+		"::capslock",
+		"::numlock",
+		"::kana",
+		"::compose",
+	}
+
+	for _, suffix := range keyboardLEDs {
+		if strings.HasSuffix(name, suffix) {
+			return true
+		}
+	}
+
+	return false
+}
+
 func (b *SysfsBackend) GetDevices() ([]Device, error) {
 	b.deviceCacheMutex.RLock()
 	defer b.deviceCacheMutex.RUnlock()
@@ -90,6 +112,10 @@ func (b *SysfsBackend) GetDevices() ([]Device, error) {
 	devices := make([]Device, 0, len(b.deviceCache))
 
 	for _, dev := range b.deviceCache {
+		if shouldSuppressDevice(dev.name) {
+			continue
+		}
+
 		parts := strings.SplitN(dev.id, ":", 2)
 		if len(parts) != 2 {
 			continue
