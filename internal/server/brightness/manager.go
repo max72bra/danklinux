@@ -181,26 +181,34 @@ func (m *Manager) SetBrightnessWithMode(deviceID string, percent int, logarithmi
 
 	log.Debugf("SetBrightness: %s to %d%%", deviceID, percent)
 
-	m.stateMutex.RLock()
+	m.stateMutex.Lock()
 	currentState := m.state
 	var found bool
 	var deviceClass DeviceClass
+	var deviceIndex int
 
 	log.Debugf("Current state has %d devices", len(currentState.Devices))
 
-	for _, dev := range currentState.Devices {
+	for i, dev := range currentState.Devices {
 		if dev.ID == deviceID {
 			found = true
 			deviceClass = dev.Class
+			deviceIndex = i
 			break
 		}
 	}
-	m.stateMutex.RUnlock()
 
 	if !found {
+		m.stateMutex.Unlock()
 		log.Debugf("Device not found in state: %s", deviceID)
 		return fmt.Errorf("device not found: %s", deviceID)
 	}
+
+	newDevices := make([]Device, len(currentState.Devices))
+	copy(newDevices, currentState.Devices)
+	newDevices[deviceIndex].CurrentPercent = percent
+	m.state = State{Devices: newDevices}
+	m.stateMutex.Unlock()
 
 	var err error
 	if deviceClass == ClassDDC {
@@ -218,6 +226,7 @@ func (m *Manager) SetBrightnessWithMode(deviceID string, percent int, logarithmi
 	}
 
 	if err != nil {
+		m.updateState()
 		return fmt.Errorf("failed to set brightness: %w", err)
 	}
 
@@ -229,6 +238,10 @@ func (m *Manager) SetBrightnessWithMode(deviceID string, percent int, logarithmi
 }
 
 func (m *Manager) IncrementBrightness(deviceID string, step int) error {
+	return m.IncrementBrightnessWithMode(deviceID, step, m.logarithmic)
+}
+
+func (m *Manager) IncrementBrightnessWithMode(deviceID string, step int, logarithmic bool) error {
 	m.stateMutex.RLock()
 	currentState := m.state
 	m.stateMutex.RUnlock()
@@ -256,7 +269,7 @@ func (m *Manager) IncrementBrightness(deviceID string, step int) error {
 		newPercent = 0
 	}
 
-	return m.SetBrightness(deviceID, newPercent)
+	return m.SetBrightnessWithMode(deviceID, newPercent, logarithmic)
 }
 
 func (m *Manager) DecrementBrightness(deviceID string, step int) error {

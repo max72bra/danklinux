@@ -73,7 +73,12 @@ func handleIncrement(conn net.Conn, req Request, m *Manager) {
 		step = int(stepFloat)
 	}
 
-	if err := m.IncrementBrightness(device, step); err != nil {
+	logarithmic := false
+	if logBool, ok := req.Params["logarithmic"].(bool); ok {
+		logarithmic = logBool
+	}
+
+	if err := m.IncrementBrightnessWithMode(device, step, logarithmic); err != nil {
 		models.RespondError(conn, req.ID.(int), err.Error())
 		return
 	}
@@ -94,7 +99,12 @@ func handleDecrement(conn net.Conn, req Request, m *Manager) {
 		step = int(stepFloat)
 	}
 
-	if err := m.DecrementBrightness(device, step); err != nil {
+	logarithmic := false
+	if logBool, ok := req.Params["logarithmic"].(bool); ok {
+		logarithmic = logBool
+	}
+
+	if err := m.IncrementBrightnessWithMode(device, -step, logarithmic); err != nil {
 		models.RespondError(conn, req.ID.(int), err.Error())
 		return
 	}
