@@ -29,7 +29,7 @@ func NewDDCBackend() (*DDCBackend, error) {
 		devices:         make(map[string]*ddcDevice),
 		scanInterval:    30 * time.Second,
 		debounceTimers:  make(map[string]*time.Timer),
-		debouncePending: make(map[string]int),
+		debouncePending: make(map[string]ddcPendingSet),
 	}
 
 	if err := b.scanI2CDevices(); err != nil {
@@ -200,7 +200,7 @@ func (b *DDCBackend) GetDevices() ([]Device, error) {
 	return devices, nil
 }
 
-func (b *DDCBackend) SetBrightness(id string, percent int, logarithmic bool) error {
+func (b *DDCBackend) SetBrightness(id string, percent int, logarithmic bool, callback func()) error {
 	b.devicesMutex.RLock()
 	_, ok := b.devices[id]
 	b.devicesMutex.RUnlock()
@@ -216,14 +216,17 @@ func (b *DDCBackend) SetBrightness(id string, percent int, logarithmic bool) err
 	b.debounceMutex.Lock()
 	defer b.debounceMutex.Unlock()
 
-	b.debouncePending[id] = percent
+	b.debouncePending[id] = ddcPendingSet{
+		percent:  percent,
+		callback: callback,
+	}
 
 	if timer, exists := b.debounceTimers[id]; exists {
 		timer.Reset(200 * time.Millisecond)
 	} else {
 		b.debounceTimers[id] = time.AfterFunc(200*time.Millisecond, func() {
 			b.debounceMutex.Lock()
-			pendingPercent, exists := b.debouncePending[id]
+			pending, exists := b.debouncePending[id]
 			if exists {
 				delete(b.debouncePending, id)
 			}
@@ -233,9 +236,13 @@ func (b *DDCBackend) SetBrightness(id string, percent int, logarithmic bool) err
 				return
 			}
 
-			err := b.setBrightnessImmediate(id, pendingPercent, logarithmic)
+			err := b.setBrightnessImmediate(id, pending.percent, logarithmic)
 			if err != nil {
 				log.Debugf("Failed to set brightness for %s: %v", id, err)
+			}
+
+			if pending.callback != nil {
+				pending.callback()
 			}
 		})
 	}
@@ -283,6 +290,10 @@ func (b *DDCBackend) setBrightnessImmediate(id string, percent int, logarithmic 
 	}
 
 	log.Debugf("set %s to %d%% (value=%d/%d)", id, percent, value, max)
+
+	b.devicesMutex.Lock()
+	dev.max = max
+	b.devicesMutex.Unlock()
 
 	return nil
 }

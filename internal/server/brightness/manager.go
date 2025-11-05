@@ -205,7 +205,10 @@ func (m *Manager) SetBrightnessWithMode(deviceID string, percent int, logarithmi
 	var err error
 	if deviceClass == ClassDDC {
 		log.Debugf("Calling DDC backend for %s", deviceID)
-		err = m.ddcBackend.SetBrightness(deviceID, percent, logarithmic)
+		err = m.ddcBackend.SetBrightness(deviceID, percent, logarithmic, func() {
+			m.updateState()
+			m.debouncedBroadcast(deviceID)
+		})
 	} else if m.logindReady && m.logindBackend != nil {
 		log.Debugf("Calling logind backend for %s", deviceID)
 		err = m.setViaSysfsWithLogind(deviceID, percent, logarithmic)
@@ -218,8 +221,10 @@ func (m *Manager) SetBrightnessWithMode(deviceID string, percent int, logarithmi
 		return fmt.Errorf("failed to set brightness: %w", err)
 	}
 
-	log.Debugf("Queueing broadcast for %s", deviceID)
-	m.debouncedBroadcast(deviceID)
+	if deviceClass != ClassDDC {
+		log.Debugf("Queueing broadcast for %s", deviceID)
+		m.debouncedBroadcast(deviceID)
+	}
 	return nil
 }
 

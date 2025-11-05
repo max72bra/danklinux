@@ -89,7 +89,12 @@ type DDCBackend struct {
 
 	debounceMutex   sync.Mutex
 	debounceTimers  map[string]*time.Timer
-	debouncePending map[string]int
+	debouncePending map[string]ddcPendingSet
+}
+
+type ddcPendingSet struct {
+	percent  int
+	callback func()
 }
 
 type ddcDevice struct {
