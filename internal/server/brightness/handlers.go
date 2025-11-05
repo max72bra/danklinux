@@ -48,11 +48,11 @@ func handleSetBrightness(conn net.Conn, req Request, m *Manager) {
 	}
 	params.Percent = int(percentFloat)
 
-	if logarithmic, ok := req.Params["logarithmic"].(bool); ok {
-		params.Logarithmic = logarithmic
+	if exponential, ok := req.Params["exponential"].(bool); ok {
+		params.Exponential = exponential
 	}
 
-	if err := m.SetBrightnessWithMode(params.Device, params.Percent, params.Logarithmic); err != nil {
+	if err := m.SetBrightnessWithMode(params.Device, params.Percent, params.Exponential); err != nil {
 		models.RespondError(conn, req.ID.(int), err.Error())
 		return
 	}
@@ -73,12 +73,12 @@ func handleIncrement(conn net.Conn, req Request, m *Manager) {
 		step = int(stepFloat)
 	}
 
-	logarithmic := false
-	if logBool, ok := req.Params["logarithmic"].(bool); ok {
-		logarithmic = logBool
+	exponential := false
+	if expBool, ok := req.Params["exponential"].(bool); ok {
+		exponential = expBool
 	}
 
-	if err := m.IncrementBrightnessWithMode(device, step, logarithmic); err != nil {
+	if err := m.IncrementBrightnessWithMode(device, step, exponential); err != nil {
 		models.RespondError(conn, req.ID.(int), err.Error())
 		return
 	}
@@ -99,12 +99,12 @@ func handleDecrement(conn net.Conn, req Request, m *Manager) {
 		step = int(stepFloat)
 	}
 
-	logarithmic := false
-	if logBool, ok := req.Params["logarithmic"].(bool); ok {
-		logarithmic = logBool
+	exponential := false
+	if expBool, ok := req.Params["exponential"].(bool); ok {
+		exponential = expBool
 	}
 
-	if err := m.IncrementBrightnessWithMode(device, -step, logarithmic); err != nil {
+	if err := m.IncrementBrightnessWithMode(device, -step, exponential); err != nil {
 		models.RespondError(conn, req.ID.(int), err.Error())
 		return
 	}

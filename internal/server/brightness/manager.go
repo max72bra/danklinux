@@ -13,12 +13,12 @@ func NewManager() (*Manager, error) {
 	return NewManagerWithOptions(false)
 }
 
-func NewManagerWithOptions(logarithmic bool) (*Manager, error) {
+func NewManagerWithOptions(exponential bool) (*Manager, error) {
 	m := &Manager{
 		subscribers:       make(map[string]chan State),
 		updateSubscribers: make(map[string]chan DeviceUpdate),
 		stopChan:          make(chan struct{}),
-		logarithmic:       logarithmic,
+		exponential:       exponential,
 	}
 
 	go m.initLogind()
@@ -171,10 +171,10 @@ func (m *Manager) updateState() {
 }
 
 func (m *Manager) SetBrightness(deviceID string, percent int) error {
-	return m.SetBrightnessWithMode(deviceID, percent, m.logarithmic)
+	return m.SetBrightnessWithMode(deviceID, percent, m.exponential)
 }
 
-func (m *Manager) SetBrightnessWithMode(deviceID string, percent int, logarithmic bool) error {
+func (m *Manager) SetBrightnessWithMode(deviceID string, percent int, exponential bool) error {
 	if percent < 0 || percent > 100 {
 		return fmt.Errorf("percent out of range: %d", percent)
 	}
@@ -213,16 +213,16 @@ func (m *Manager) SetBrightnessWithMode(deviceID string, percent int, logarithmi
 	var err error
 	if deviceClass == ClassDDC {
 		log.Debugf("Calling DDC backend for %s", deviceID)
-		err = m.ddcBackend.SetBrightness(deviceID, percent, logarithmic, func() {
+		err = m.ddcBackend.SetBrightness(deviceID, percent, exponential, func() {
 			m.updateState()
 			m.debouncedBroadcast(deviceID)
 		})
 	} else if m.logindReady && m.logindBackend != nil {
 		log.Debugf("Calling logind backend for %s", deviceID)
-		err = m.setViaSysfsWithLogind(deviceID, percent, logarithmic)
+		err = m.setViaSysfsWithLogind(deviceID, percent, exponential)
 	} else {
 		log.Debugf("Calling sysfs backend for %s", deviceID)
-		err = m.sysfsBackend.SetBrightness(deviceID, percent, logarithmic)
+		err = m.sysfsBackend.SetBrightness(deviceID, percent, exponential)
 	}
 
 	if err != nil {
@@ -238,10 +238,10 @@ func (m *Manager) SetBrightnessWithMode(deviceID string, percent int, logarithmi
 }
 
 func (m *Manager) IncrementBrightness(deviceID string, step int) error {
-	return m.IncrementBrightnessWithMode(deviceID, step, m.logarithmic)
+	return m.IncrementBrightnessWithMode(deviceID, step, m.exponential)
 }
 
-func (m *Manager) IncrementBrightnessWithMode(deviceID string, step int, logarithmic bool) error {
+func (m *Manager) IncrementBrightnessWithMode(deviceID string, step int, exponential bool) error {
 	m.stateMutex.RLock()
 	currentState := m.state
 	m.stateMutex.RUnlock()
@@ -269,14 +269,14 @@ func (m *Manager) IncrementBrightnessWithMode(deviceID string, step int, logarit
 		newPercent = 0
 	}
 
-	return m.SetBrightnessWithMode(deviceID, newPercent, logarithmic)
+	return m.SetBrightnessWithMode(deviceID, newPercent, exponential)
 }
 
 func (m *Manager) DecrementBrightness(deviceID string, step int) error {
 	return m.IncrementBrightness(deviceID, -step)
 }
 
-func (m *Manager) setViaSysfsWithLogind(deviceID string, percent int, logarithmic bool) error {
+func (m *Manager) setViaSysfsWithLogind(deviceID string, percent int, exponential bool) error {
 	parts := strings.SplitN(deviceID, ":", 2)
 	if len(parts) != 2 {
 		return fmt.Errorf("invalid device id: %s", deviceID)
@@ -290,16 +290,16 @@ func (m *Manager) setViaSysfsWithLogind(deviceID string, percent int, logarithmi
 		return err
 	}
 
-	value := m.sysfsBackend.PercentToValue(percent, dev, logarithmic)
+	value := m.sysfsBackend.PercentToValue(percent, dev, exponential)
 
 	if m.logindBackend == nil {
-		return m.sysfsBackend.SetBrightness(deviceID, percent, logarithmic)
+		return m.sysfsBackend.SetBrightness(deviceID, percent, exponential)
 	}
 
 	err = m.logindBackend.SetBrightness(subsystem, name, uint32(value))
 	if err != nil {
 		log.Debugf("logind SetBrightness failed, falling back to direct sysfs: %v", err)
-		return m.sysfsBackend.SetBrightness(deviceID, percent, logarithmic)
+		return m.sysfsBackend.SetBrightness(deviceID, percent, exponential)
 	}
 
 	log.Debugf("set %s to %d%% (%d/%d) via logind", deviceID, percent, value, dev.maxBrightness)

@@ -141,7 +141,7 @@ func (b *SysfsBackend) GetDevice(id string) (*sysfsDevice, error) {
 	return dev, nil
 }
 
-func (b *SysfsBackend) SetBrightness(id string, percent int, logarithmic bool) error {
+func (b *SysfsBackend) SetBrightness(id string, percent int, exponential bool) error {
 	dev, err := b.GetDevice(id)
 	if err != nil {
 		return err
@@ -151,7 +151,7 @@ func (b *SysfsBackend) SetBrightness(id string, percent int, logarithmic bool) e
 		return fmt.Errorf("percent out of range: %d", percent)
 	}
 
-	value := b.PercentToValue(percent, dev, logarithmic)
+	value := b.PercentToValue(percent, dev, exponential)
 
 	parts := strings.SplitN(id, ":", 2)
 	if len(parts) != 2 {
@@ -174,7 +174,7 @@ func (b *SysfsBackend) SetBrightness(id string, percent int, logarithmic bool) e
 	return nil
 }
 
-func (b *SysfsBackend) PercentToValue(percent int, dev *sysfsDevice, logarithmic bool) int {
+func (b *SysfsBackend) PercentToValue(percent int, dev *sysfsDevice, exponential bool) int {
 	if percent == 0 {
 		return dev.minValue
 	}
@@ -182,7 +182,7 @@ func (b *SysfsBackend) PercentToValue(percent int, dev *sysfsDevice, logarithmic
 	usableRange := dev.maxBrightness - dev.minValue
 	var value int
 
-	if logarithmic {
+	if exponential {
 		const exponent = 2.0
 		normalizedPercent := float64(percent) / 100.0
 		hardwarePercent := math.Pow(normalizedPercent, 1.0/exponent)
@@ -201,7 +201,7 @@ func (b *SysfsBackend) PercentToValue(percent int, dev *sysfsDevice, logarithmic
 	return value
 }
 
-func (b *SysfsBackend) ValueToPercent(value int, dev *sysfsDevice, logarithmic bool) int {
+func (b *SysfsBackend) ValueToPercent(value int, dev *sysfsDevice, exponential bool) int {
 	if value <= dev.minValue {
 		if dev.minValue == 0 && value == 0 {
 			return 0
@@ -216,12 +216,12 @@ func (b *SysfsBackend) ValueToPercent(value int, dev *sysfsDevice, logarithmic b
 
 	var percent int
 
-	if logarithmic {
+	if exponential {
 		const exponent = 2.0
 		linearPercent := 1 + ((value - dev.minValue) * 99 / usableRange)
 		normalizedLinear := float64(linearPercent) / 100.0
-		logPercent := math.Pow(normalizedLinear, exponent)
-		percent = int(math.Round(logPercent * 100.0))
+		expPercent := math.Pow(normalizedLinear, exponent)
+		percent = int(math.Round(expPercent * 100.0))
 	} else {
 		percent = 1 + ((value - dev.minValue) * 99 / usableRange)
 	}

@@ -198,7 +198,7 @@ func (b *DDCBackend) GetDevices() ([]Device, error) {
 	return devices, nil
 }
 
-func (b *DDCBackend) SetBrightness(id string, value int, logarithmic bool, callback func()) error {
+func (b *DDCBackend) SetBrightness(id string, value int, exponential bool, callback func()) error {
 	b.devicesMutex.RLock()
 	dev, ok := b.devices[id]
 	b.devicesMutex.RUnlock()
@@ -234,7 +234,7 @@ func (b *DDCBackend) SetBrightness(id string, value int, logarithmic bool, callb
 				return
 			}
 
-			err := b.setBrightnessImmediate(id, pending.percent, logarithmic)
+			err := b.setBrightnessImmediate(id, pending.percent, exponential)
 			if err != nil {
 				log.Debugf("Failed to set brightness for %s: %v", id, err)
 			}
@@ -248,7 +248,7 @@ func (b *DDCBackend) SetBrightness(id string, value int, logarithmic bool, callb
 	return nil
 }
 
-func (b *DDCBackend) setBrightnessImmediate(id string, value int, logarithmic bool) error {
+func (b *DDCBackend) setBrightnessImmediate(id string, value int, exponential bool) error {
 	b.devicesMutex.RLock()
 	dev, ok := b.devices[id]
 	b.devicesMutex.RUnlock()
@@ -414,7 +414,7 @@ func (b *DDCBackend) setVCPFeature(fd int, vcp byte, value int) error {
 	return nil
 }
 
-func (b *DDCBackend) percentToValue(percent int, max int, logarithmic bool) int {
+func (b *DDCBackend) percentToValue(percent int, max int, exponential bool) int {
 	const minValue = 1
 
 	if percent == 0 {
@@ -424,7 +424,7 @@ func (b *DDCBackend) percentToValue(percent int, max int, logarithmic bool) int 
 	usableRange := max - minValue
 	var value int
 
-	if logarithmic {
+	if exponential {
 		const exponent = 2.0
 		normalizedPercent := float64(percent) / 100.0
 		hardwarePercent := math.Pow(normalizedPercent, 1.0/exponent)
@@ -443,7 +443,7 @@ func (b *DDCBackend) percentToValue(percent int, max int, logarithmic bool) int 
 	return value
 }
 
-func (b *DDCBackend) valueToPercent(value int, max int, logarithmic bool) int {
+func (b *DDCBackend) valueToPercent(value int, max int, exponential bool) int {
 	const minValue = 1
 
 	if max == 0 {
@@ -461,12 +461,12 @@ func (b *DDCBackend) valueToPercent(value int, max int, logarithmic bool) int {
 
 	var percent int
 
-	if logarithmic {
+	if exponential {
 		const exponent = 2.0
 		linearPercent := 1 + ((value - minValue) * 99 / usableRange)
 		normalizedLinear := float64(linearPercent) / 100.0
-		logPercent := math.Pow(normalizedLinear, exponent)
-		percent = int(math.Round(logPercent * 100.0))
+		expPercent := math.Pow(normalizedLinear, exponent)
+		percent = int(math.Round(expPercent * 100.0))
 	} else {
 		percent = 1 + ((value - minValue) * 99 / usableRange)
 	}
