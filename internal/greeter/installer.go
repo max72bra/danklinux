@@ -202,6 +202,56 @@ func CopyGreeterFiles(dmsPath, compositor string, logFunc func(string), sudoPass
 	return nil
 }
 
+// SetupParentDirectoryACLs sets ACLs on parent directories to allow traversal
+func SetupParentDirectoryACLs(logFunc func(string), sudoPassword string) error {
+	if !commandExists("setfacl") {
+		logFunc("⚠ Warning: setfacl command not found. ACL support may not be available on this filesystem.")
+		logFunc("  If theme sync doesn't work, you may need to install acl package:")
+		logFunc("  - Fedora/RHEL: sudo dnf install acl")
+		logFunc("  - Debian/Ubuntu: sudo apt-get install acl")
+		logFunc("  - Arch: sudo pacman -S acl")
+		return nil
+	}
+
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("failed to get user home directory: %w", err)
+	}
+
+	parentDirs := []struct {
+		path string
+		desc string
+	}{
+		{homeDir, "home directory"},
+		{filepath.Join(homeDir, ".config"), ".config directory"},
+		{filepath.Join(homeDir, ".local"), ".local directory"},
+		{filepath.Join(homeDir, ".cache"), ".cache directory"},
+		{filepath.Join(homeDir, ".local", "state"), ".local/state directory"},
+	}
+
+	logFunc("\nSetting up parent directory ACLs for greeter user access...")
+
+	for _, dir := range parentDirs {
+		if _, err := os.Stat(dir.path); os.IsNotExist(err) {
+			if err := os.MkdirAll(dir.path, 0755); err != nil {
+				logFunc(fmt.Sprintf("⚠ Warning: Could not create %s: %v", dir.desc, err))
+				continue
+			}
+		}
+
+		// Set ACL to allow greeter user execute (traverse) permission
+		if err := runSudoCmd(sudoPassword, "setfacl", "-m", "u:greeter:x", dir.path); err != nil {
+			logFunc(fmt.Sprintf("⚠ Warning: Failed to set ACL on %s: %v", dir.desc, err))
+			logFunc(fmt.Sprintf("  You may need to run manually: setfacl -m u:greeter:x %s", dir.path))
+			continue
+		}
+
+		logFunc(fmt.Sprintf("✓ Set ACL on %s", dir.desc))
+	}
+
+	return nil
+}
+
 func SetupDMSGroup(logFunc func(string), sudoPassword string) error {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
@@ -216,11 +266,18 @@ func SetupDMSGroup(logFunc func(string), sudoPassword string) error {
 		return fmt.Errorf("failed to determine current user")
 	}
 
-	// Add current user to greeter group for file access permissions
-	if err := runSudoCmd(sudoPassword, "usermod", "-aG", "greeter", currentUser); err != nil {
-		return fmt.Errorf("failed to add %s to greeter group: %w", currentUser, err)
+	// Check if user is already in greeter group
+	groupsCmd := exec.Command("groups", currentUser)
+	groupsOutput, err := groupsCmd.Output()
+	if err == nil && strings.Contains(string(groupsOutput), "greeter") {
+		logFunc(fmt.Sprintf("✓ %s is already in greeter group", currentUser))
+	} else {
+		// Add current user to greeter group for file access permissions
+		if err := runSudoCmd(sudoPassword, "usermod", "-aG", "greeter", currentUser); err != nil {
+			return fmt.Errorf("failed to add %s to greeter group: %w", currentUser, err)
+		}
+		logFunc(fmt.Sprintf("✓ Added %s to greeter group (logout/login required for changes to take effect)", currentUser))
 	}
-	logFunc(fmt.Sprintf("✓ Added %s to greeter group (logout/login required for changes to take effect)", currentUser))
 
 	configDirs := []struct {
 		path string
@@ -251,6 +308,11 @@ func SetupDMSGroup(logFunc func(string), sudoPassword string) error {
 		}
 
 		logFunc(fmt.Sprintf("✓ Set group permissions for %s", dir.desc))
+	}
+
+	// Set up ACLs on parent directories to allow greeter user traversal
+	if err := SetupParentDirectoryACLs(logFunc, sudoPassword); err != nil {
+		return fmt.Errorf("failed to setup parent directory ACLs: %w", err)
 	}
 
 	return nil

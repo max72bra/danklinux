@@ -174,6 +174,11 @@ func syncGreeter() error {
 		}
 	}
 
+	fmt.Println("\nSetting up permissions and ACLs...")
+	if err := greeter.SetupDMSGroup(logFunc, ""); err != nil {
+		return err
+	}
+
 	fmt.Println("\nSynchronizing DMS configurations...")
 	if err := greeter.SyncDMSConfigs(dmsPath, logFunc, ""); err != nil {
 		return err
