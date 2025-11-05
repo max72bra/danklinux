@@ -184,15 +184,13 @@ func (b *DDCBackend) GetDevices() ([]Device, error) {
 			dev.max = cap.max
 		}
 
-		percent := b.valueToPercent(cap.current, cap.max, false)
-
 		devices = append(devices, Device{
 			Class:          ClassDDC,
 			ID:             id,
 			Name:           dev.name,
 			Current:        cap.current,
 			Max:            cap.max,
-			CurrentPercent: percent,
+			CurrentPercent: cap.current,
 			Backend:        "ddc",
 		})
 	}
@@ -200,24 +198,24 @@ func (b *DDCBackend) GetDevices() ([]Device, error) {
 	return devices, nil
 }
 
-func (b *DDCBackend) SetBrightness(id string, percent int, logarithmic bool, callback func()) error {
+func (b *DDCBackend) SetBrightness(id string, value int, logarithmic bool, callback func()) error {
 	b.devicesMutex.RLock()
-	_, ok := b.devices[id]
+	dev, ok := b.devices[id]
 	b.devicesMutex.RUnlock()
 
 	if !ok {
 		return fmt.Errorf("device not found: %s", id)
 	}
 
-	if percent < 0 || percent > 100 {
-		return fmt.Errorf("percent out of range: %d", percent)
+	if value < 0 || value > dev.max {
+		return fmt.Errorf("value out of range: %d (max: %d)", value, dev.max)
 	}
 
 	b.debounceMutex.Lock()
 	defer b.debounceMutex.Unlock()
 
 	b.debouncePending[id] = ddcPendingSet{
-		percent:  percent,
+		percent:  value,
 		callback: callback,
 	}
 
@@ -250,7 +248,7 @@ func (b *DDCBackend) SetBrightness(id string, percent int, logarithmic bool, cal
 	return nil
 }
 
-func (b *DDCBackend) setBrightnessImmediate(id string, percent int, logarithmic bool) error {
+func (b *DDCBackend) setBrightnessImmediate(id string, value int, logarithmic bool) error {
 	b.devicesMutex.RLock()
 	dev, ok := b.devices[id]
 	b.devicesMutex.RUnlock()
@@ -283,13 +281,11 @@ func (b *DDCBackend) setBrightnessImmediate(id string, percent int, logarithmic 
 		b.devicesMutex.Unlock()
 	}
 
-	value := b.percentToValue(percent, max, logarithmic)
-
 	if err := b.setVCPFeature(fd, VCP_BRIGHTNESS, value); err != nil {
 		return fmt.Errorf("set vcp feature: %w", err)
 	}
 
-	log.Debugf("set %s to %d%% (value=%d/%d)", id, percent, value, max)
+	log.Debugf("set %s to %d/%d", id, value, max)
 
 	b.devicesMutex.Lock()
 	dev.max = max
