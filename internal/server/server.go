@@ -25,7 +25,7 @@ import (
 	"github.com/AvengeMedia/danklinux/internal/server/wlcontext"
 )
 
-const APIVersion = 14
+const APIVersion = 15
 
 type Capabilities struct {
 	Capabilities []string `json:"capabilities"`
@@ -318,6 +318,10 @@ func getServerInfo() ServerInfo {
 
 	if bluezManager != nil {
 		caps = append(caps, "bluetooth")
+	}
+
+	if cupsManager != nil {
+		caps = append(caps, "cups")
 	}
 
 	if dwlManager != nil {

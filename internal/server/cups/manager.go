@@ -1,54 +1,60 @@
 package cups
 
 import (
-	"bufio"
-	"context"
 	"fmt"
-	"io"
-	"net/http"
 	"os"
-	"os/exec"
-	"regexp"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 
 	"github.com/AvengeMedia/danklinux/internal/log"
-	"github.com/godbus/dbus/v5"
-)
-
-const (
-	cupsService   = "org.cups.cupsd"
-	cupsPath      = "/org/cups/cupsd"
-	cupsInterface = "org.cups.cupsd.Notifier"
+	"github.com/AvengeMedia/danklinux/pkg/ipp"
 )
 
 func NewManager() (*Manager, error) {
-	conn, err := dbus.ConnectSystemBus()
-	if err != nil {
-		return nil, fmt.Errorf("system bus connection failed: %w", err)
+	host := os.Getenv("DMS_IPP_HOST")
+	if host == "" {
+		host = "localhost"
 	}
+
+	portStr := os.Getenv("DMS_IPP_PORT")
+	port := 631
+	if portStr != "" {
+		if p, err := strconv.Atoi(portStr); err == nil {
+			port = p
+		}
+	}
+
+	username := os.Getenv("DMS_IPP_USERNAME")
+	password := os.Getenv("DMS_IPP_PASSWORD")
+
+	client := ipp.NewCUPSClient(host, port, username, password, false)
+	baseURL := fmt.Sprintf("http://%s:%d", host, port)
 
 	m := &Manager{
 		state: &CUPSState{
 			Printers: make(map[string]*Printer),
 		},
+		client:      client,
+		baseURL:     baseURL,
 		stateMutex:  sync.RWMutex{},
-		BaseURL:     "http://localhost:631",
-		Client:      &http.Client{Timeout: 30 * time.Second},
-		dbusConn:    conn,
-		signals:     make(chan *dbus.Signal, 256),
-		dirty:       make(chan struct{}, 1),
 		stopChan:    make(chan struct{}),
+		dirty:       make(chan struct{}, 1),
 		subscribers: make(map[string]chan CUPSState),
 		subMutex:    sync.RWMutex{},
 	}
 
-	if err := m.initialize(); err != nil {
-		conn.Close()
+	if err := m.updateState(); err != nil {
 		return nil, err
 	}
+
+	m.subscription = NewSubscriptionManager(client, baseURL)
+	if err := m.subscription.Start(); err != nil {
+		log.Warnf("[CUPS] Failed to start subscription manager: %v, notifications will not work", err)
+	}
+
+	m.eventWG.Add(1)
+	go m.eventHandler()
 
 	m.notifierWg.Add(1)
 	go m.notifier()
@@ -56,206 +62,31 @@ func NewManager() (*Manager, error) {
 	return m, nil
 }
 
-func (m *Manager) initialize() error {
-	if err := m.updateState(); err != nil {
-		return err
-	}
+func (m *Manager) eventHandler() {
+	defer m.eventWG.Done()
 
-	if err := m.startSignalPump(); err != nil {
-		m.Close()
-		return err
-	}
-	// dbus on CUPS is not so...
-	obj := m.dbusConn.Object(cupsService, cupsPath)
-	err := obj.Call("org.freedesktop.DBus.Peer.Ping", 0).Store()
-	if err != nil {
-		log.Warnf("[CUPS] D-Bus interface not available. Fallback to log parsing")
-		lm, err := m.NewLogMonitor()
-		if err == nil {
-			lm.FallbackLogMonitorStart()
-		}
-		return err
-	}
-
-	return nil
-}
-
-func (m *Manager) NewLogMonitor() (*LogMonitor, error) {
-	ctx, cancel := context.WithCancel(context.Background())
-
-	logPaths := []string{
-		"/var/log/cups/access_log",
-	}
-
-	lm := &LogMonitor{
-		ctx:      ctx,
-		cancel:   cancel,
-		logPaths: logPaths,
-		manager:  m,
-	}
-
-	m.lm = *lm
-
-	return lm, nil
-}
-
-func (lm *LogMonitor) FallbackLogMonitorStart() error {
-	// CUPS log monitor
-	for _, logPath := range lm.logPaths {
-		if _, err := os.Stat(logPath); err == nil {
-			go lm.monitorLogFile(logPath)
-		}
-	}
-	return nil
-}
-
-func (lm *LogMonitor) monitorLogFile(logPath string) {
-	// tail -F to follow the log
-	cmd := exec.CommandContext(lm.ctx, "tail", "-F", "-n", "0", logPath)
-
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		log.Errorf("[CUPS] Error stdout pipe for %s: %v", logPath, err)
+	if m.subscription == nil {
 		return
 	}
-
-	if err := cmd.Start(); err != nil {
-		log.Errorf("[CUPS] Error tail start for %s: %v", logPath, err)
-		return
-	}
-
-	reader := bufio.NewReader(stdout)
 
 	for {
 		select {
-		case <-lm.ctx.Done():
-			cmd.Process.Kill()
+		case <-m.stopChan:
 			return
-		default:
-		}
-
-		line, err := reader.ReadString('\n')
-		if err != nil {
-			if err == io.EOF {
-				select {
-				case <-lm.ctx.Done():
-					cmd.Process.Kill()
-					return
-				case <-time.After(100 * time.Millisecond):
-					continue
-				}
+		case event, ok := <-m.subscription.Events():
+			if !ok {
+				return
 			}
-			log.Errorf("[CUPS] Read error log: %v", err)
-			return
-		}
+			log.Debugf("[CUPS] Received event: %s (printer: %s, job: %d)",
+				event.EventName, event.PrinterName, event.JobID)
 
-		if line != "" {
-			lm.processLogLine(strings.TrimSpace(line))
-		}
-	}
-}
-
-func (lm *LogMonitor) processLogLine(line string) {
-	entry, err := lm.parseLogLine(line)
-
-	if err != nil {
-		log.Error("[CUPS] Log event error", "err", err)
-	} else {
-		if entry.Status == 200 {
-			printerName := entry.GetPrinterName()
-			switch entry.IPPOperation {
-			case "Create-Job", "Print-Job":
-				lm.manager.InjectJobCreated(printerName)
-
-			case "Cancel-Job":
-				lm.manager.InjectJobCompleted(printerName)
-
-			case "Pause-Printer", "Resume-Printer", "Enable-Printer", "Disable-Printer":
-				lm.manager.InjectPrinterStateChanged(printerName)
-
-			case "FakeAdd-Printer":
-				lm.manager.InjectPrinterAdded()
-
-			case "FakeDelete-Printer":
-				lm.manager.InjectPrinterDeleted()
+			if err := m.updateState(); err != nil {
+				log.Warnf("[CUPS] Failed to update state after event: %v", err)
+			} else {
+				m.notifySubscribers()
 			}
 		}
 	}
-}
-
-var accessLogPattern = regexp.MustCompile(`^(\S+)\s+(\S+)\s+(\S+)\s+\[([^\]]+)\]\s+"([A-Z]+)\s+(\S+)\s+([^"]+)"\s+(\d+)\s+(\d+)(?:\s+(\S+))?(?:\s+(\S+))?`)
-
-func (lm *LogMonitor) parseLogLine(line string) (*CUPSAccessLogEntry, error) {
-	re := accessLogPattern
-	matches := re.FindStringSubmatch(line)
-
-	if len(matches) < 10 {
-		return nil, fmt.Errorf("formato log non valido")
-	}
-
-	// Parse timestamp
-	timestamp, err := time.Parse("02/Jan/2006:15:04:05 -0700", matches[4])
-	if err != nil {
-		return nil, fmt.Errorf("errore parsing timestamp: %v", err)
-	}
-
-	// Parse status e bytes
-	status, _ := strconv.Atoi(matches[8])
-	bytes, _ := strconv.Atoi(matches[9])
-
-	entry := &CUPSAccessLogEntry{
-		Host:      matches[1],
-		Group:     matches[2],
-		User:      matches[3],
-		Timestamp: timestamp,
-		Method:    matches[5],
-		Resource:  matches[6],
-		Version:   matches[7],
-		Status:    status,
-		Bytes:     bytes,
-	}
-
-	// IPP operation optional
-	if len(matches) > 10 && matches[10] != "" {
-		entry.IPPOperation = matches[10]
-	}
-	if len(matches) > 11 && matches[11] != "" {
-		entry.IPPStatus = matches[11]
-	}
-
-	return entry, nil
-}
-
-func (e *CUPSAccessLogEntry) GetPrinterName() string {
-	parts := strings.Split(e.Resource, "/")
-	for i, part := range parts {
-		if part == "printers" && i+1 < len(parts) {
-			return parts[i+1]
-		}
-	}
-	return ""
-}
-
-func (e *CUPSAccessLogEntry) IsSuccessful() bool {
-	return e.Status >= 200 && e.Status < 300
-}
-
-func (e *CUPSAccessLogEntry) EventType() string {
-	if e.IPPOperation != "" {
-		return e.IPPOperation
-	}
-	// Fallback
-	if strings.Contains(e.Resource, "/jobs") {
-		return "Job-Operation"
-	}
-	if strings.Contains(e.Resource, "/printers") {
-		return "Printer-Operation"
-	}
-	return "Unknown"
-}
-
-func (lm *LogMonitor) Close() {
-	lm.cancel()
 }
 
 func (m *Manager) updateState() error {
@@ -272,7 +103,6 @@ func (m *Manager) updateState() error {
 		}
 
 		printer.Jobs = jobs
-
 		printerMap[printer.Name] = &printer
 	}
 
@@ -281,128 +111,6 @@ func (m *Manager) updateState() error {
 	m.stateMutex.Unlock()
 
 	return nil
-}
-
-func (m *Manager) startSignalPump() error {
-	m.dbusConn.Signal(m.signals)
-
-	if err := m.dbusConn.AddMatchSignal(
-		dbus.WithMatchInterface(cupsInterface),
-		dbus.WithMatchMember("PrinterAdded"),
-	); err != nil {
-		return err
-	}
-
-	if err := m.dbusConn.AddMatchSignal(
-		dbus.WithMatchInterface(cupsInterface),
-		dbus.WithMatchMember("PrinterDeleted"),
-	); err != nil {
-		return err
-	}
-
-	if err := m.dbusConn.AddMatchSignal(
-		dbus.WithMatchInterface(cupsInterface),
-		dbus.WithMatchMember("PrinterStateChanged"),
-	); err != nil {
-		return err
-	}
-
-	if err := m.dbusConn.AddMatchSignal(
-		dbus.WithMatchInterface(cupsInterface),
-		dbus.WithMatchMember("JobCreated"),
-	); err != nil {
-		return err
-	}
-
-	if err := m.dbusConn.AddMatchSignal(
-		dbus.WithMatchInterface(cupsInterface),
-		dbus.WithMatchMember("JobCompleted"),
-	); err != nil {
-		return err
-	}
-
-	m.sigWG.Add(1)
-	go func() {
-		defer m.sigWG.Done()
-		for {
-			select {
-			case <-m.stopChan:
-				return
-			case sig, ok := <-m.signals:
-				if !ok {
-					return
-				}
-				if sig == nil {
-					continue
-				}
-				m.handleSignal(sig)
-			}
-		}
-	}()
-
-	return nil
-}
-
-func (m *Manager) handleSignal(sig *dbus.Signal) {
-	switch sig.Name {
-	case cupsInterface + ".PrinterAdded", cupsInterface + ".PrinterDeleted",
-		cupsInterface + ".PrinterStateChanged":
-		m.updateState()
-		m.notifySubscribers()
-	case cupsInterface + ".JobCreated", cupsInterface + ".JobCompleted":
-		if len(sig.Body) >= 1 {
-			if printerName, ok := sig.Body[0].(string); ok {
-				m.stateMutex.Lock()
-
-				printers := m.state.Printers
-				printer, exists := printers[printerName]
-				if exists {
-					jobs, err := m.GetJobs(printerName, "not-completed")
-					if err == nil {
-						printer.Jobs = jobs
-					}
-				}
-				m.state.Printers = printers
-
-				m.stateMutex.Unlock()
-				m.notifySubscribers()
-			}
-		}
-	}
-}
-
-func (m *Manager) InjectSignal(name string, body ...interface{}) bool {
-	sig := &dbus.Signal{
-		Name: name,
-		Body: body,
-	}
-
-	select {
-	case m.signals <- sig:
-		return true
-	default:
-		return false
-	}
-}
-
-func (m *Manager) InjectPrinterAdded() bool {
-	return m.InjectSignal(cupsInterface + ".PrinterAdded")
-}
-
-func (m *Manager) InjectPrinterDeleted() bool {
-	return m.InjectSignal(cupsInterface + ".PrinterDeleted")
-}
-
-func (m *Manager) InjectPrinterStateChanged(printerName string) bool {
-	return m.InjectSignal(cupsInterface+".PrinterStateChanged", printerName)
-}
-
-func (m *Manager) InjectJobCreated(printerName string) bool {
-	return m.InjectSignal(cupsInterface+".JobCreated", printerName)
-}
-
-func (m *Manager) InjectJobCompleted(printerName string) bool {
-	return m.InjectSignal(cupsInterface+".JobCompleted", printerName)
 }
 
 func (m *Manager) notifier() {
@@ -500,14 +208,13 @@ func (m *Manager) Unsubscribe(id string) {
 
 func (m *Manager) Close() {
 	close(m.stopChan)
-	m.notifierWg.Wait()
 
-	m.sigWG.Wait()
-
-	if m.signals != nil {
-		m.dbusConn.RemoveSignal(m.signals)
-		close(m.signals)
+	if m.subscription != nil {
+		m.subscription.Stop()
 	}
+
+	m.eventWG.Wait()
+	m.notifierWg.Wait()
 
 	m.subMutex.Lock()
 	for _, ch := range m.subscribers {
@@ -515,10 +222,6 @@ func (m *Manager) Close() {
 	}
 	m.subscribers = make(map[string]chan CUPSState)
 	m.subMutex.Unlock()
-
-	if m.dbusConn != nil {
-		m.dbusConn.Close()
-	}
 }
 
 func stateChanged(old, new *CUPSState) bool {
@@ -534,6 +237,78 @@ func stateChanged(old, new *CUPSState) bool {
 			oldPrinter.StateReason != newPrinter.StateReason ||
 			len(oldPrinter.Jobs) != len(newPrinter.Jobs) {
 			return true
+		}
+	}
+	return false
+}
+
+func parsePrinterState(attrs ipp.Attributes) string {
+	if stateAttr, ok := attrs[ipp.AttributePrinterState]; ok && len(stateAttr) > 0 {
+		if state, ok := stateAttr[0].Value.(int); ok {
+			switch state {
+			case 3:
+				return "idle"
+			case 4:
+				return "processing"
+			case 5:
+				return "stopped"
+			default:
+				return fmt.Sprintf("%d", state)
+			}
+		}
+	}
+	return "unknown"
+}
+
+func parseJobState(attrs ipp.Attributes) string {
+	if stateAttr, ok := attrs[ipp.AttributeJobState]; ok && len(stateAttr) > 0 {
+		if state, ok := stateAttr[0].Value.(int); ok {
+			switch state {
+			case 3:
+				return "pending"
+			case 4:
+				return "pending-held"
+			case 5:
+				return "processing"
+			case 6:
+				return "processing-stopped"
+			case 7:
+				return "canceled"
+			case 8:
+				return "aborted"
+			case 9:
+				return "completed"
+			default:
+				return fmt.Sprintf("%d", state)
+			}
+		}
+	}
+	return "unknown"
+}
+
+func getStringAttr(attrs ipp.Attributes, key string) string {
+	if attr, ok := attrs[key]; ok && len(attr) > 0 {
+		if val, ok := attr[0].Value.(string); ok {
+			return val
+		}
+		return fmt.Sprintf("%v", attr[0].Value)
+	}
+	return ""
+}
+
+func getIntAttr(attrs ipp.Attributes, key string) int {
+	if attr, ok := attrs[key]; ok && len(attr) > 0 {
+		if val, ok := attr[0].Value.(int); ok {
+			return val
+		}
+	}
+	return 0
+}
+
+func getBoolAttr(attrs ipp.Attributes, key string) bool {
+	if attr, ok := attrs[key]; ok && len(attr) > 0 {
+		if val, ok := attr[0].Value.(bool); ok {
+			return val
 		}
 	}
 	return false

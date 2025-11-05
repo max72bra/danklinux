@@ -34,3 +34,9 @@ packages:
       outpkg: mocks_network
     interfaces:
       Backend:
+  github.com/AvengeMedia/danklinux/internal/server/cups:
+    config:
+      dir: "internal/mocks/cups"
+      outpkg: mocks_cups
+    interfaces:
+      CUPSClientInterface:

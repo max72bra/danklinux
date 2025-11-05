@@ -26,13 +26,10 @@ type CUPSEvent struct {
 
 func HandleRequest(conn net.Conn, req Request, manager *Manager) {
 	switch req.Method {
-	case "cups.testNotify":
-		manager.InjectPrinterStateChanged("Test-Printer")
-		models.Respond(conn, req.ID, SuccessResult{Success: true, Message: "tested"})
 	case "cups.subscribe":
 		handleSubscribe(conn, req, manager)
 	case "cups.getPrinters":
-		handleGetPrintes(conn, req, manager)
+		handleGetPrinters(conn, req, manager)
 	case "cups.getJobs":
 		handleGetJobs(conn, req, manager)
 	case "cups.pausePrinter":
@@ -48,7 +45,7 @@ func HandleRequest(conn net.Conn, req Request, manager *Manager) {
 	}
 }
 
-func handleGetPrintes(conn net.Conn, req Request, manager *Manager) {
+func handleGetPrinters(conn net.Conn, req Request, manager *Manager) {
 	printers, err := manager.GetPrinters()
 	if err != nil {
 		models.RespondError(conn, req.ID, err.Error())
@@ -108,11 +105,13 @@ func handleCancelJob(conn net.Conn, req Request, manager *Manager) {
 		models.RespondError(conn, req.ID, "missing or invalid 'printerName' parameter")
 		return
 	}
-	jobID, ok := req.Params["jobid"].(int)
+
+	jobIDFloat, ok := req.Params["jobid"].(float64)
 	if !ok {
 		models.RespondError(conn, req.ID, "missing or invalid 'jobid' parameter")
 		return
 	}
+	jobID := int(jobIDFloat)
 
 	if err := manager.CancelJob(printerName, jobID); err != nil {
 		models.RespondError(conn, req.ID, err.Error())
