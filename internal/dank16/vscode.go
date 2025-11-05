@@ -41,7 +41,18 @@ func updateTokenColor(tc interface{}, scopeToColor map[string]string) {
 		return
 	}
 
+	isYaml := hasScopeContaining(scopes, "yaml")
+
 	for _, scope := range scopes {
+		scopeStr, ok := scope.(string)
+		if !ok {
+			continue
+		}
+
+		if scopeStr == "string" && isYaml {
+			continue
+		}
+
 		if applyColorToScope(settings, scope, scopeToColor) {
 			break
 		}
@@ -61,6 +72,22 @@ func applyColorToScope(settings map[string]interface{}, scope interface{}, scope
 
 	settings["foreground"] = newColor
 	return true
+}
+
+func hasScopeContaining(scopes []interface{}, substring string) bool {
+	for _, scope := range scopes {
+		scopeStr, ok := scope.(string)
+		if !ok {
+			continue
+		}
+
+		for i := 0; i <= len(scopeStr)-len(substring); i++ {
+			if scopeStr[i:i+len(substring)] == substring {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func EnrichVSCodeTheme(themeData []byte, colors []string) ([]byte, error) {
@@ -113,29 +140,48 @@ func EnrichVSCodeTheme(themeData []byte, colors []string) ([]byte, error) {
 			"comment":                        colors[8],
 			"punctuation.definition.comment": colors[8],
 			"keyword":                        colors[5],
-			"storage.type":                   colors[13], // uint8, etc
+			"storage.type":                   colors[13],
 			"storage.modifier":               colors[5],
 			"variable":                       colors[15],
-			"meta.object-literal.key":        colors[15],
-			"string":                         colors[3],
+			"meta.object-literal.key":        colors[4],
 			"constant.other.symbol":          colors[3],
 			"constant.numeric":               colors[3],
-			"constant.language":              colors[11], // true/false/nil
+			"constant.language":              colors[11],
 			"constant.character":             colors[3],
-			"entity.name.type":               colors[12], // type ABC
+			"entity.name.type":               colors[12],
 			"support.type":                   colors[13],
 			"entity.name.class":              colors[12],
 			"entity.name.function":           colors[2],
 			"support.function":               colors[2],
 			"support.class":                  colors[15],
 			"support.variable":               colors[15],
-			"variable.language":              colors[11], // this/self/super
+			"variable.language":              colors[11],
+			"entity.name.tag.yaml":           colors[12],
+			"string.unquoted.plain.out.yaml": colors[15],
+			"string.unquoted.yaml":           colors[15],
+			"string":                         colors[3],
 		}
 
 		for i, tc := range tokenColors {
 			updateTokenColor(tc, scopeToColor)
 			tokenColors[i] = tc
 		}
+
+		yamlRules := []VSCodeTokenColor{
+			{
+				Scope:    "entity.name.tag.yaml",
+				Settings: VSCodeTokenSetting{Foreground: colors[12]},
+			},
+			{
+				Scope:    []string{"string.unquoted.plain.out.yaml", "string.unquoted.yaml"},
+				Settings: VSCodeTokenSetting{Foreground: colors[15]},
+			},
+		}
+
+		for _, rule := range yamlRules {
+			tokenColors = append(tokenColors, rule)
+		}
+
 		theme["tokenColors"] = tokenColors
 	}
 
