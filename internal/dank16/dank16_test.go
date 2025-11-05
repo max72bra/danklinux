@@ -325,14 +325,6 @@ func TestGeneratePalette(t *testing.T) {
 			opts: PaletteOptions{IsLight: true},
 		},
 		{
-			name: "dark theme with honor primary",
-			base: "#625690",
-			opts: PaletteOptions{
-				IsLight:      false,
-				HonorPrimary: "#ff6600",
-			},
-		},
-		{
 			name: "light theme with custom background",
 			base: "#625690",
 			opts: PaletteOptions{
@@ -341,12 +333,11 @@ func TestGeneratePalette(t *testing.T) {
 			},
 		},
 		{
-			name: "dark theme with all options",
+			name: "dark theme with custom background",
 			base: "#625690",
 			opts: PaletteOptions{
-				IsLight:      false,
-				HonorPrimary: "#ff6600",
-				Background:   "#0a0a0a",
+				IsLight:    false,
+				Background: "#0a0a0a",
 			},
 		},
 	}
@@ -638,15 +629,6 @@ func TestGeneratePaletteWithDPS(t *testing.T) {
 			base: "#625690",
 			opts: PaletteOptions{IsLight: true, UseDPS: true},
 		},
-		{
-			name: "dark theme with DPS and honor primary",
-			base: "#625690",
-			opts: PaletteOptions{
-				IsLight:      false,
-				HonorPrimary: "#ff6600",
-				UseDPS:       true,
-			},
-		},
 	}
 
 	for _, tt := range tests {
@@ -671,6 +653,47 @@ func TestGeneratePaletteWithDPS(t *testing.T) {
 					t.Errorf("Color %d (%s) has insufficient DPS contrast %f with background %s (expected >= %f)",
 						i, result[i], lc, bgColor, minLc)
 				}
+			}
+		})
+	}
+}
+
+func TestDeriveContainer(t *testing.T) {
+	tests := []struct {
+		name     string
+		primary  string
+		isLight  bool
+		expected string
+	}{
+		{
+			name:     "dark mode",
+			primary:  "#ccbdff",
+			isLight:  false,
+			expected: "#4a3e76",
+		},
+		{
+			name:     "light mode",
+			primary:  "#625690",
+			isLight:  true,
+			expected: "#e7deff",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := DeriveContainer(tt.primary, tt.isLight)
+
+			resultRGB := HexToRGB(result)
+			expectedRGB := HexToRGB(tt.expected)
+
+			rDiff := math.Abs(resultRGB.R - expectedRGB.R)
+			gDiff := math.Abs(resultRGB.G - expectedRGB.G)
+			bDiff := math.Abs(resultRGB.B - expectedRGB.B)
+
+			tolerance := 0.02
+			if rDiff > tolerance || gDiff > tolerance || bDiff > tolerance {
+				t.Errorf("DeriveContainer(%s, %v) = %s, expected %s (RGB diff: R:%.4f G:%.4f B:%.4f)",
+					tt.primary, tt.isLight, result, tt.expected, rDiff, gDiff, bDiff)
 			}
 		})
 	}

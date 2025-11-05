@@ -1,9 +1,22 @@
 package dank16
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 )
+
+func GenerateJSON(colors []string) string {
+	colorMap := make(map[string]string)
+
+	for i, color := range colors {
+		colorMap[fmt.Sprintf("color%d", i)] = color
+	}
+
+	marshalled, _ := json.Marshal(colorMap)
+
+	return string(marshalled)
+}
 
 func GenerateKittyTheme(colors []string) string {
 	kittyColors := []struct {

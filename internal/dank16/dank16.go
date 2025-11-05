@@ -284,10 +284,9 @@ func EnsureContrastDPSLstar(hexColor, hexBg string, minLc float64, isLightMode b
 }
 
 type PaletteOptions struct {
-	IsLight      bool
-	HonorPrimary string
-	Background   string
-	UseDPS       bool
+	IsLight    bool
+	Background string
+	UseDPS     bool
 }
 
 func ensureContrastAuto(hexColor, hexBg string, target float64, opts PaletteOptions) string {
@@ -297,7 +296,23 @@ func ensureContrastAuto(hexColor, hexBg string, target float64, opts PaletteOpti
 	return EnsureContrast(hexColor, hexBg, target, opts.IsLight)
 }
 
-func GeneratePalette(baseColor string, opts PaletteOptions) []string {
+func DeriveContainer(primary string, isLight bool) string {
+	rgb := HexToRGB(primary)
+	hsv := RGBToHSV(rgb)
+
+	if isLight {
+		containerV := math.Min(hsv.V*1.77, 1.0)
+		containerS := hsv.S * 0.32
+		return RGBToHex(HSVToRGB(HSV{H: hsv.H, S: containerS, V: containerV}))
+	}
+	containerV := hsv.V * 0.463
+	containerS := math.Min(hsv.S*1.834, 1.0)
+	return RGBToHex(HSVToRGB(HSV{H: hsv.H, S: containerS, V: containerV}))
+}
+
+func GeneratePalette(primaryColor string, opts PaletteOptions) []string {
+	baseColor := DeriveContainer(primaryColor, opts.IsLight)
+
 	rgb := HexToRGB(baseColor)
 	hsv := RGBToHSV(rgb)
 
@@ -369,21 +384,13 @@ func GeneratePalette(baseColor string, opts PaletteOptions) []string {
 		magH += 1.0
 	}
 	var magColor string
-	if opts.HonorPrimary != "" {
-		hr := HexToRGB(opts.HonorPrimary)
-		hh := RGBToHSV(hr)
-		if opts.IsLight {
-			magColor = RGBToHex(HSVToRGB(HSV{H: hh.H, S: math.Max(hh.S*0.9, 0.7), V: hh.V * 0.85}))
-			palette = append(palette, ensureContrastAuto(magColor, bgColor, normalTextTarget, opts))
-		} else {
-			magColor = RGBToHex(HSVToRGB(HSV{H: hh.H, S: hh.S * 0.8, V: hh.V * 0.75}))
-			palette = append(palette, ensureContrastAuto(magColor, bgColor, normalTextTarget, opts))
-		}
-	} else if opts.IsLight {
-		magColor = RGBToHex(HSVToRGB(HSV{H: magH, S: math.Max(hsv.S*0.75, 0.6), V: hsv.V * 0.9}))
+	hr := HexToRGB(primaryColor)
+	hh := RGBToHSV(hr)
+	if opts.IsLight {
+		magColor = RGBToHex(HSVToRGB(HSV{H: hh.H, S: math.Max(hh.S*0.9, 0.7), V: hh.V * 0.85}))
 		palette = append(palette, ensureContrastAuto(magColor, bgColor, normalTextTarget, opts))
 	} else {
-		magColor = RGBToHex(HSVToRGB(HSV{H: magH, S: math.Max(hsv.S*0.7, 0.6), V: hsv.V * 0.85}))
+		magColor = RGBToHex(HSVToRGB(HSV{H: hh.H, S: hh.S * 0.8, V: hh.V * 0.75}))
 		palette = append(palette, ensureContrastAuto(magColor, bgColor, normalTextTarget, opts))
 	}
 
@@ -391,15 +398,7 @@ func GeneratePalette(baseColor string, opts PaletteOptions) []string {
 	if cyanH > 1.0 {
 		cyanH -= 1.0
 	}
-	if opts.HonorPrimary != "" {
-		palette = append(palette, ensureContrastAuto(opts.HonorPrimary, bgColor, normalTextTarget, opts))
-	} else if opts.IsLight {
-		cyanColor := RGBToHex(HSVToRGB(HSV{H: cyanH, S: math.Max(hsv.S*0.8, 0.65), V: hsv.V * 1.05}))
-		palette = append(palette, ensureContrastAuto(cyanColor, bgColor, normalTextTarget, opts))
-	} else {
-		cyanColor := RGBToHex(HSVToRGB(HSV{H: cyanH, S: math.Max(hsv.S*0.6, 0.5), V: math.Min(hsv.V*1.25, 0.85)}))
-		palette = append(palette, ensureContrastAuto(cyanColor, bgColor, normalTextTarget, opts))
-	}
+	palette = append(palette, ensureContrastAuto(primaryColor, bgColor, normalTextTarget, opts))
 
 	if opts.IsLight {
 		palette = append(palette, "#1a1a1a")
@@ -416,15 +415,10 @@ func GeneratePalette(baseColor string, opts PaletteOptions) []string {
 		palette = append(palette, ensureContrastAuto(brightGreen, bgColor, secondaryTarget, opts))
 		brightYellow := RGBToHex(HSVToRGB(HSV{H: yellowH, S: math.Min(0.68*satBoost, 1.0), V: 0.60}))
 		palette = append(palette, ensureContrastAuto(brightYellow, bgColor, secondaryTarget, opts))
-		if opts.HonorPrimary != "" {
-			hr := HexToRGB(opts.HonorPrimary)
-			hh := RGBToHSV(hr)
-			brightBlue := RGBToHex(HSVToRGB(HSV{H: hh.H, S: math.Min(hh.S*1.1, 1.0), V: math.Min(hh.V*1.2, 1.0)}))
-			palette = append(palette, ensureContrastAuto(brightBlue, bgColor, secondaryTarget, opts))
-		} else {
-			brightBlue := RGBToHex(HSVToRGB(HSV{H: hsv.H, S: math.Max(hsv.S*0.8, 0.7), V: math.Min(hsv.V*1.3, 1.0)}))
-			palette = append(palette, ensureContrastAuto(brightBlue, bgColor, secondaryTarget, opts))
-		}
+		hr := HexToRGB(primaryColor)
+		hh := RGBToHSV(hr)
+		brightBlue := RGBToHex(HSVToRGB(HSV{H: hh.H, S: math.Min(hh.S*1.1, 1.0), V: math.Min(hh.V*1.2, 1.0)}))
+		palette = append(palette, ensureContrastAuto(brightBlue, bgColor, secondaryTarget, opts))
 		brightMag := RGBToHex(HSVToRGB(HSV{H: magH, S: math.Max(hsv.S*0.9, 0.75), V: math.Min(hsv.V*1.25, 1.0)}))
 		palette = append(palette, ensureContrastAuto(brightMag, bgColor, secondaryTarget, opts))
 		brightCyan := RGBToHex(HSVToRGB(HSV{H: cyanH, S: math.Max(hsv.S*0.75, 0.65), V: math.Min(hsv.V*1.25, 1.0)}))
@@ -436,14 +430,9 @@ func GeneratePalette(baseColor string, opts PaletteOptions) []string {
 		palette = append(palette, ensureContrastAuto(brightGreen, bgColor, secondaryTarget, opts))
 		brightYellow := RGBToHex(HSVToRGB(HSV{H: yellowH, S: math.Min(0.30*satBoost, 1.0), V: 0.91}))
 		palette = append(palette, ensureContrastAuto(brightYellow, bgColor, secondaryTarget, opts))
-		if opts.HonorPrimary != "" {
-			// Make it way brighter for type names in dark mode
-			brightBlue := retoneToL(opts.HonorPrimary, 85.0)
-			palette = append(palette, brightBlue)
-		} else {
-			brightBlue := RGBToHex(HSVToRGB(HSV{H: hsv.H, S: math.Max(hsv.S*0.6, 0.5), V: math.Min(hsv.V*1.5, 0.9)}))
-			palette = append(palette, ensureContrastAuto(brightBlue, bgColor, secondaryTarget, opts))
-		}
+		// Make it way brighter for type names in dark mode
+		brightBlue := retoneToL(primaryColor, 85.0)
+		palette = append(palette, brightBlue)
 		brightMag := RGBToHex(HSVToRGB(HSV{H: magH, S: math.Max(hsv.S*0.7, 0.6), V: math.Min(hsv.V*1.3, 0.9)}))
 		palette = append(palette, ensureContrastAuto(brightMag, bgColor, secondaryTarget, opts))
 		brightCyanH := hsv.H + 0.02
