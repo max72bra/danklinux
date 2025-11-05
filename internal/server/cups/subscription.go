@@ -12,6 +12,7 @@ import (
 type SubscriptionManager struct {
 	client         CUPSClientInterface
 	subscriptionID int
+	sequenceNumber int
 	eventChan      chan SubscriptionEvent
 	stopChan       chan struct{}
 	wg             sync.WaitGroup
@@ -118,7 +119,7 @@ func (sm *SubscriptionManager) fetchNotifications() error {
 	req.OperationAttributes[ipp.AttributePrinterURI] = fmt.Sprintf("%s/", sm.baseURL)
 	req.OperationAttributes[ipp.AttributeRequestingUserName] = "dms"
 	req.OperationAttributes["notify-subscription-ids"] = sm.subscriptionID
-	req.OperationAttributes["notify-sequence-numbers"] = 0
+	req.OperationAttributes["notify-sequence-numbers"] = sm.sequenceNumber
 	req.OperationAttributes["notify-wait"] = true
 
 	resp, err := sm.client.SendRequest(fmt.Sprintf("%s/", sm.baseURL), req, nil)
@@ -128,6 +129,14 @@ func (sm *SubscriptionManager) fetchNotifications() error {
 
 	// Notifications come back in SubscriptionAttributes (event-notification-attributes-tag)
 	for _, eventGroup := range resp.SubscriptionAttributes {
+		// Update sequence number from the event
+		if seqAttr, ok := eventGroup["notify-sequence-number"]; ok && len(seqAttr) > 0 {
+			if seqNum, ok := seqAttr[0].Value.(int); ok {
+				// Next request should ask for events after this sequence number
+				sm.sequenceNumber = seqNum + 1
+			}
+		}
+
 		event := sm.parseEvent(eventGroup)
 		select {
 		case sm.eventChan <- event:
