@@ -55,6 +55,9 @@ var wlContext *wlcontext.SharedContext
 var capabilitySubscribers = make(map[string]chan ServerInfo)
 var capabilityMutex sync.RWMutex
 
+var cupsSubscribers = make(map[string]bool)
+var cupsSubscribersMutex sync.Mutex
+
 func getSocketDir() string {
 	if runtime := os.Getenv("XDG_RUNTIME_DIR"); runtime != "" {
 		return runtime
@@ -633,36 +636,67 @@ func handleSubscribe(conn net.Conn, req models.Request) {
 		}()
 	}
 
-	if shouldSubscribe("cups") && cupsManager != nil {
-		wg.Add(1)
-		cupsChan := cupsManager.Subscribe(clientID + "-cups")
-		go func() {
-			defer wg.Done()
-			defer cupsManager.Unsubscribe(clientID + "-cups")
+	if shouldSubscribe("cups") {
+		cupsSubscribersMutex.Lock()
+		wasEmpty := len(cupsSubscribers) == 0
+		cupsSubscribers[clientID+"-cups"] = true
+		cupsSubscribersMutex.Unlock()
 
-			initialState := cupsManager.GetState()
-			select {
-			case eventChan <- ServiceEvent{Service: "cups", Data: initialState}:
-			case <-stopChan:
-				return
+		if wasEmpty {
+			if err := InitializeCupsManager(); err != nil {
+				log.Warnf("Failed to initialize CUPS manager for subscription: %v", err)
+			} else {
+				notifyCapabilityChange()
 			}
+		}
 
-			for {
+		if cupsManager != nil {
+			wg.Add(1)
+			cupsChan := cupsManager.Subscribe(clientID + "-cups")
+			go func() {
+				defer wg.Done()
+				defer func() {
+					cupsManager.Unsubscribe(clientID + "-cups")
+
+					cupsSubscribersMutex.Lock()
+					delete(cupsSubscribers, clientID+"-cups")
+					isEmpty := len(cupsSubscribers) == 0
+					cupsSubscribersMutex.Unlock()
+
+					if isEmpty {
+						log.Info("Last CUPS subscriber disconnected, shutting down CUPS manager")
+						if cupsManager != nil {
+							cupsManager.Close()
+							cupsManager = nil
+							notifyCapabilityChange()
+						}
+					}
+				}()
+
+				initialState := cupsManager.GetState()
 				select {
-				case state, ok := <-cupsChan:
-					if !ok {
-						return
-					}
-					select {
-					case eventChan <- ServiceEvent{Service: "cups", Data: state}:
-					case <-stopChan:
-						return
-					}
+				case eventChan <- ServiceEvent{Service: "cups", Data: initialState}:
 				case <-stopChan:
 					return
 				}
-			}
-		}()
+
+				for {
+					select {
+					case state, ok := <-cupsChan:
+						if !ok {
+							return
+						}
+						select {
+						case eventChan <- ServiceEvent{Service: "cups", Data: state}:
+						case <-stopChan:
+							return
+						}
+					case <-stopChan:
+						return
+					}
+				}
+			}()
+		}
 	}
 
 	if shouldSubscribe("dwl") && dwlManager != nil {
@@ -981,14 +1015,6 @@ func Start(printDocs bool) error {
 	go func() {
 		if err := InitializeBluezManager(); err != nil {
 			log.Warnf("Bluez manager unavailable: %v", err)
-		} else {
-			notifyCapabilityChange()
-		}
-	}()
-
-	go func() {
-		if err := InitializeCupsManager(); err != nil {
-			log.Warnf("CUPS manager unavailable: %v", err)
 		} else {
 			notifyCapabilityChange()
 		}
