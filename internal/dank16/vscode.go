@@ -143,10 +143,13 @@ func EnrichVSCodeTheme(themeData []byte, colors []string) ([]byte, error) {
 			"storage.type":                   colors[13],
 			"storage.modifier":               colors[5],
 			"variable":                       colors[15],
+			"variable.parameter":             colors[7],
 			"meta.object-literal.key":        colors[4],
-			"constant.other.symbol":          colors[3],
-			"constant.numeric":               colors[3],
-			"constant.language":              colors[11],
+			"meta.property.object":           colors[4],
+			"variable.other.property":        colors[4],
+			"constant.other.symbol":          colors[12],
+			"constant.numeric":               colors[12],
+			"constant.language":              colors[12],
 			"constant.character":             colors[3],
 			"entity.name.type":               colors[12],
 			"support.type":                   colors[13],
@@ -155,7 +158,7 @@ func EnrichVSCodeTheme(themeData []byte, colors []string) ([]byte, error) {
 			"support.function":               colors[2],
 			"support.class":                  colors[15],
 			"support.variable":               colors[15],
-			"variable.language":              colors[11],
+			"variable.language":              colors[12],
 			"entity.name.tag.yaml":           colors[12],
 			"string.unquoted.plain.out.yaml": colors[15],
 			"string.unquoted.yaml":           colors[15],
@@ -187,22 +190,22 @@ func EnrichVSCodeTheme(themeData []byte, colors []string) ([]byte, error) {
 
 	if semanticTokenColors, ok := theme["semanticTokenColors"].(map[string]interface{}); ok {
 		updates := map[string]string{
-			"variable":          colors[15], // white - most common element
-			"variable.readonly": colors[11],
-			"property":          colors[15], // white
+			"variable":          colors[15],
+			"variable.readonly": colors[12],
+			"property":          colors[4],
 			"function":          colors[2],
 			"method":            colors[2],
-			"type":              colors[12], // type ABC
+			"type":              colors[12],
 			"class":             colors[12],
 			"typeParameter":     colors[13],
-			"enumMember":        colors[11],
+			"enumMember":        colors[12],
 			"string":            colors[3],
-			"number":            colors[3],
+			"number":            colors[12],
 			"comment":           colors[8],
 			"keyword":           colors[5],
 			"operator":          colors[15],
-			"parameter":         colors[14],
-			"namespace":         colors[15], // white - package names stand out
+			"parameter":         colors[7],
+			"namespace":         colors[15],
 		}
 
 		for key, color := range updates {
@@ -217,22 +220,22 @@ func EnrichVSCodeTheme(themeData []byte, colors []string) ([]byte, error) {
 	} else {
 		semanticTokenColors := make(map[string]interface{})
 		updates := map[string]string{
-			"variable":          colors[7], // neutral gray - most common, stay subtle
-			"variable.readonly": colors[11],
-			"property":          colors[7], // neutral gray
+			"variable":          colors[7],
+			"variable.readonly": colors[12],
+			"property":          colors[4],
 			"function":          colors[2],
 			"method":            colors[2],
-			"type":              colors[12], // type ABC
+			"type":              colors[12],
 			"class":             colors[12],
 			"typeParameter":     colors[13],
-			"enumMember":        colors[11],
+			"enumMember":        colors[12],
 			"string":            colors[3],
-			"number":            colors[3],
+			"number":            colors[12],
 			"comment":           colors[8],
 			"keyword":           colors[5],
 			"operator":          colors[15],
-			"parameter":         colors[14],
-			"namespace":         colors[15], // white - package names stand out
+			"parameter":         colors[7],
+			"namespace":         colors[15],
 		}
 
 		for key, color := range updates {
