@@ -58,6 +58,12 @@ func (b *DDCBackend) scanI2CDevices() error {
 			continue
 		}
 
+		// Skip SMBus, GPU internal buses (e.g. AMDGPU SMU) to prevent GPU hangs
+		if isIgnorableI2CBus(i) {
+			log.Debugf("Skipping ignorable i2c-%d", i)
+			continue
+		}
+
 		dev, err := b.probeDDCDevice(i)
 		if err != nil || dev == nil {
 			continue
