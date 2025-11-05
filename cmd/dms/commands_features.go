@@ -54,6 +54,28 @@ var greeterInstallCmd = &cobra.Command{
 	},
 }
 
+var greeterSyncCmd = &cobra.Command{
+	Use:   "sync",
+	Short: "Sync DMS theme and settings with greeter",
+	Long:  "Synchronize your DMS theme, settings, and wallpaper configuration with the login greeter screen",
+	Run: func(cmd *cobra.Command, args []string) {
+		if err := syncGreeter(); err != nil {
+			log.Fatalf("Error syncing greeter: %v", err)
+		}
+	},
+}
+
+var greeterStatusCmd = &cobra.Command{
+	Use:   "status",
+	Short: "Check greeter sync status",
+	Long:  "Check the status of greeter installation and configuration sync",
+	Run: func(cmd *cobra.Command, args []string) {
+		if err := checkGreeterStatus(); err != nil {
+			log.Fatalf("Error checking greeter status: %v", err)
+		}
+	},
+}
+
 func runUpdateCheck() {
 	fmt.Println("Checking for DankMaterialShell updates...")
 	fmt.Println()
