@@ -98,11 +98,12 @@ type ddcPendingSet struct {
 }
 
 type ddcDevice struct {
-	bus  int
-	addr int
-	id   string
-	name string
-	max  int
+	bus            int
+	addr           int
+	id             string
+	name           string
+	max            int
+	lastBrightness int
 }
 
 type ddcCapability struct {

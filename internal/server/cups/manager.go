@@ -48,18 +48,26 @@ func NewManager() (*Manager, error) {
 		return nil, err
 	}
 
-	m.subscription = NewSubscriptionManager(client, baseURL)
-	if err := m.subscription.Start(); err != nil {
-		log.Warnf("[CUPS] Failed to start subscription manager: %v, notifications will not work", err)
+	if isLocalCUPS(host) {
+		m.subscription = NewDBusSubscriptionManager(client, baseURL)
+		log.Infof("[CUPS] Using D-Bus notifications for local CUPS")
+	} else {
+		m.subscription = NewSubscriptionManager(client, baseURL)
+		log.Infof("[CUPS] Using IPPGET notifications for remote CUPS")
 	}
-
-	m.eventWG.Add(1)
-	go m.eventHandler()
 
 	m.notifierWg.Add(1)
 	go m.notifier()
 
 	return m, nil
+}
+
+func isLocalCUPS(host string) bool {
+	switch host {
+	case "localhost", "127.0.0.1", "::1", "":
+		return true
+	}
+	return false
 }
 
 func (m *Manager) eventHandler() {
@@ -192,8 +200,19 @@ func (m *Manager) snapshotState() CUPSState {
 func (m *Manager) Subscribe(id string) chan CUPSState {
 	ch := make(chan CUPSState, 64)
 	m.subMutex.Lock()
+	wasEmpty := len(m.subscribers) == 0
 	m.subscribers[id] = ch
 	m.subMutex.Unlock()
+
+	if wasEmpty && m.subscription != nil {
+		if err := m.subscription.Start(); err != nil {
+			log.Warnf("[CUPS] Failed to start subscription manager: %v", err)
+		} else {
+			m.eventWG.Add(1)
+			go m.eventHandler()
+		}
+	}
+
 	return ch
 }
 
@@ -203,7 +222,13 @@ func (m *Manager) Unsubscribe(id string) {
 		close(ch)
 		delete(m.subscribers, id)
 	}
+	isEmpty := len(m.subscribers) == 0
 	m.subMutex.Unlock()
+
+	if isEmpty && m.subscription != nil {
+		m.subscription.Stop()
+		m.eventWG.Wait()
+	}
 }
 
 func (m *Manager) Close() {

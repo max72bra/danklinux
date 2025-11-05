@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"strconv"
+	"time"
 )
 
 type HttpAdapter struct {
@@ -21,10 +22,13 @@ type HttpAdapter struct {
 
 func NewHttpAdapter(host string, port int, username, password string, useTLS bool) *HttpAdapter {
 	httpClient := http.Client{
+		Timeout: 0,
 		Transport: &http.Transport{
 			TLSClientConfig: &tls.Config{
 				InsecureSkipVerify: true,
 			},
+			ResponseHeaderTimeout: 90 * time.Second,
+			IdleConnTimeout:       120 * time.Second,
 		},
 	}
 

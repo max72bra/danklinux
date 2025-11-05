@@ -41,6 +41,14 @@ func NewDDCBackend() (*DDCBackend, error) {
 
 func (b *DDCBackend) scanI2CDevices() error {
 	b.scanMutex.Lock()
+	lastScan := b.lastScan
+	b.scanMutex.Unlock()
+
+	if time.Since(lastScan) < b.scanInterval {
+		return nil
+	}
+
+	b.scanMutex.Lock()
 	defer b.scanMutex.Unlock()
 
 	if time.Since(b.lastScan) < b.scanInterval {
@@ -100,11 +108,13 @@ func (b *DDCBackend) probeDDCDevice(bus int) (*ddcDevice, error) {
 	n, err := syscall.Write(fd, writebuf)
 	if err == nil && n == len(writebuf) {
 		name := b.getDDCName(bus)
-		return &ddcDevice{
+		dev := &ddcDevice{
 			bus:  bus,
 			addr: DDCCI_ADDR,
 			name: name,
-		}, nil
+		}
+		b.readInitialBrightness(fd, dev)
+		return dev, nil
 	}
 
 	readbuf := make([]byte, 4)
@@ -115,11 +125,13 @@ func (b *DDCBackend) probeDDCDevice(bus int) (*ddcDevice, error) {
 
 	name := b.getDDCName(bus)
 
-	return &ddcDevice{
+	dev := &ddcDevice{
 		bus:  bus,
 		addr: DDCCI_ADDR,
 		name: name,
-	}, nil
+	}
+	b.readInitialBrightness(fd, dev)
+	return dev, nil
 }
 
 func (b *DDCBackend) getDDCName(bus int) string {
@@ -137,103 +149,36 @@ func (b *DDCBackend) getDDCName(bus int) string {
 	return name
 }
 
+func (b *DDCBackend) readInitialBrightness(fd int, dev *ddcDevice) {
+	cap, err := b.getVCPFeature(fd, VCP_BRIGHTNESS)
+	if err != nil {
+		log.Debugf("failed to read initial brightness for %s: %v", dev.name, err)
+		return
+	}
+
+	dev.max = cap.max
+	dev.lastBrightness = cap.current
+	log.Debugf("initialized %s with brightness %d/%d", dev.name, cap.current, cap.max)
+}
+
 func (b *DDCBackend) GetDevices() ([]Device, error) {
 	if err := b.scanI2CDevices(); err != nil {
 		log.Debugf("DDC scan error: %v", err)
 	}
 
 	b.devicesMutex.Lock()
-	devSnapshot := make(map[string]*ddcDevice)
+	defer b.devicesMutex.Unlock()
+
+	devices := make([]Device, 0, len(b.devices))
+
 	for id, dev := range b.devices {
-		devCopy := *dev
-		devSnapshot[id] = &devCopy
-	}
-	b.devicesMutex.Unlock()
-
-	devices := make([]Device, 0, len(devSnapshot))
-
-	for id, dev := range devSnapshot {
-		busPath := fmt.Sprintf("/dev/i2c-%d", dev.bus)
-
-		fd, err := syscall.Open(busPath, syscall.O_RDWR, 0)
-		if err != nil {
-			log.Debugf("failed to open %s: %v", busPath, err)
-			if dev.max > 0 {
-				devices = append(devices, Device{
-					Class:          ClassDDC,
-					ID:             id,
-					Name:           dev.name,
-					Current:        0,
-					Max:            dev.max,
-					CurrentPercent: 0,
-					Backend:        "ddc",
-				})
-			}
-			continue
-		}
-
-		if _, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(fd), I2C_SLAVE, uintptr(dev.addr)); errno != 0 {
-			syscall.Close(fd)
-			log.Debugf("failed to set i2c slave addr for %s: %v", id, errno)
-			if dev.max > 0 {
-				devices = append(devices, Device{
-					Class:          ClassDDC,
-					ID:             id,
-					Name:           dev.name,
-					Current:        0,
-					Max:            dev.max,
-					CurrentPercent: 0,
-					Backend:        "ddc",
-				})
-			}
-			continue
-		}
-
-		var cap *ddcCapability
-		var vcpErr error
-		for retry := 0; retry < 2; retry++ {
-			cap, vcpErr = b.getVCPFeature(fd, VCP_BRIGHTNESS)
-			if vcpErr == nil {
-				break
-			}
-			if retry < 1 {
-				time.Sleep(100 * time.Millisecond)
-			}
-		}
-		syscall.Close(fd)
-
-		if vcpErr != nil {
-			log.Debugf("failed to get brightness for %s after retries: %v", id, vcpErr)
-			if dev.max > 0 {
-				devices = append(devices, Device{
-					Class:          ClassDDC,
-					ID:             id,
-					Name:           dev.name,
-					Current:        0,
-					Max:            dev.max,
-					CurrentPercent: 0,
-					Backend:        "ddc",
-				})
-			}
-			continue
-		}
-
-		if dev.max == 0 && cap.max > 0 {
-			dev.max = cap.max
-			b.devicesMutex.Lock()
-			if origDev, ok := b.devices[id]; ok {
-				origDev.max = cap.max
-			}
-			b.devicesMutex.Unlock()
-		}
-
 		devices = append(devices, Device{
 			Class:          ClassDDC,
 			ID:             id,
 			Name:           dev.name,
-			Current:        cap.current,
+			Current:        dev.lastBrightness,
 			Max:            dev.max,
-			CurrentPercent: cap.current,
+			CurrentPercent: dev.lastBrightness,
 			Backend:        "ddc",
 		})
 	}
@@ -332,6 +277,7 @@ func (b *DDCBackend) setBrightnessImmediate(id string, value int, exponential bo
 
 	b.devicesMutex.Lock()
 	dev.max = max
+	dev.lastBrightness = value
 	b.devicesMutex.Unlock()
 
 	return nil

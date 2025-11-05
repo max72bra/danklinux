@@ -37,7 +37,7 @@ type Job struct {
 type Manager struct {
 	state             *CUPSState
 	client            CUPSClientInterface
-	subscription      *SubscriptionManager
+	subscription      SubscriptionManagerInterface
 	stateMutex        sync.RWMutex
 	subscribers       map[string]chan CUPSState
 	subMutex          sync.RWMutex
@@ -47,6 +47,12 @@ type Manager struct {
 	notifierWg        sync.WaitGroup
 	lastNotifiedState *CUPSState
 	baseURL           string
+}
+
+type SubscriptionManagerInterface interface {
+	Start() error
+	Stop()
+	Events() <-chan SubscriptionEvent
 }
 
 type CUPSClientInterface interface {

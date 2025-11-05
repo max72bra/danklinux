@@ -444,5 +444,6 @@ var (
 		"notify-subscription-ids": TagInteger,
 		"notify-sequence-numbers": TagInteger,
 		"notify-wait":             TagBoolean,
+		"notify-recipient-uri":    TagUri,
 	}
 )

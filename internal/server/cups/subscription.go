@@ -101,53 +101,82 @@ func (sm *SubscriptionManager) createSubscription() (int, error) {
 func (sm *SubscriptionManager) notificationLoop() {
 	defer sm.wg.Done()
 
+	backoff := 1 * time.Second
+
 	for {
 		select {
 		case <-sm.stopChan:
 			return
 		default:
-			if err := sm.fetchNotifications(); err != nil {
-				log.Warnf("[CUPS] Error fetching notifications: %v", err)
-				time.Sleep(5 * time.Second)
+		}
+
+		gotAny, err := sm.fetchNotificationsWithWait()
+		if err != nil {
+			log.Warnf("[CUPS] Error fetching notifications: %v", err)
+			jitter := time.Duration(50+(time.Now().UnixNano()%200)) * time.Millisecond
+			sleepTime := backoff + jitter
+			if sleepTime > 30*time.Second {
+				sleepTime = 30 * time.Second
 			}
+			select {
+			case <-sm.stopChan:
+				return
+			case <-time.After(sleepTime):
+			}
+			if backoff < 30*time.Second {
+				backoff *= 2
+			}
+			continue
+		}
+
+		backoff = 1 * time.Second
+
+		if gotAny {
+			continue
+		}
+
+		select {
+		case <-sm.stopChan:
+			return
+		case <-time.After(2 * time.Second):
 		}
 	}
 }
 
-func (sm *SubscriptionManager) fetchNotifications() error {
+func (sm *SubscriptionManager) fetchNotificationsWithWait() (bool, error) {
 	req := ipp.NewRequest(ipp.OperationGetNotifications, 1)
 	req.OperationAttributes[ipp.AttributePrinterURI] = fmt.Sprintf("%s/", sm.baseURL)
 	req.OperationAttributes[ipp.AttributeRequestingUserName] = "dms"
 	req.OperationAttributes["notify-subscription-ids"] = sm.subscriptionID
-	req.OperationAttributes["notify-sequence-numbers"] = sm.sequenceNumber
-	req.OperationAttributes["notify-wait"] = true
+	if sm.sequenceNumber > 0 {
+		req.OperationAttributes["notify-sequence-numbers"] = sm.sequenceNumber
+	}
 
 	resp, err := sm.client.SendRequest(fmt.Sprintf("%s/", sm.baseURL), req, nil)
 	if err != nil {
-		return err
+		return false, err
 	}
 
-	// Notifications come back in SubscriptionAttributes (event-notification-attributes-tag)
+	gotAny := false
 	for _, eventGroup := range resp.SubscriptionAttributes {
-		// Update sequence number from the event
 		if seqAttr, ok := eventGroup["notify-sequence-number"]; ok && len(seqAttr) > 0 {
 			if seqNum, ok := seqAttr[0].Value.(int); ok {
-				// Next request should ask for events after this sequence number
 				sm.sequenceNumber = seqNum + 1
 			}
 		}
 
 		event := sm.parseEvent(eventGroup)
+		gotAny = true
 		select {
 		case sm.eventChan <- event:
 		case <-sm.stopChan:
-			return nil
+			return gotAny, nil
 		default:
 			log.Warn("[CUPS] Event channel full, dropping event")
 		}
 	}
 
-	return nil
+	return gotAny, nil
 }
 
 func (sm *SubscriptionManager) parseEvent(attrs ipp.Attributes) SubscriptionEvent {
@@ -194,9 +223,11 @@ func (sm *SubscriptionManager) Stop() {
 
 	if sm.subscriptionID != 0 {
 		sm.cancelSubscription()
+		sm.subscriptionID = 0
+		sm.sequenceNumber = 0
 	}
 
-	close(sm.eventChan)
+	sm.stopChan = make(chan struct{})
 }
 
 func (sm *SubscriptionManager) cancelSubscription() {
