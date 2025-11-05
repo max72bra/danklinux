@@ -331,7 +331,7 @@ func GeneratePalette(baseColor string, opts PaletteOptions) []string {
 		redColor = RGBToHex(HSVToRGB(HSV{H: redH, S: math.Min(0.80*satBoost, 1.0), V: 0.55}))
 		palette = append(palette, ensureContrastAuto(redColor, bgColor, normalTextTarget, opts))
 	} else {
-		redColor = RGBToHex(HSVToRGB(HSV{H: redH, S: math.Min(0.70*satBoost, 1.0), V: 0.85}))
+		redColor = RGBToHex(HSVToRGB(HSV{H: redH, S: math.Min(0.65*satBoost, 1.0), V: 0.80}))
 		palette = append(palette, ensureContrastAuto(redColor, bgColor, normalTextTarget, opts))
 	}
 
@@ -341,7 +341,7 @@ func GeneratePalette(baseColor string, opts PaletteOptions) []string {
 		greenColor = RGBToHex(HSVToRGB(HSV{H: greenH, S: math.Min(math.Max(hsv.S*0.9, 0.80)*satBoost, 1.0), V: 0.45}))
 		palette = append(palette, ensureContrastAuto(greenColor, bgColor, normalTextTarget, opts))
 	} else {
-		greenColor = RGBToHex(HSVToRGB(HSV{H: greenH, S: math.Min(0.45*satBoost, 1.0), V: 0.88}))
+		greenColor = RGBToHex(HSVToRGB(HSV{H: greenH, S: math.Min(0.42*satBoost, 1.0), V: 0.84}))
 		palette = append(palette, ensureContrastAuto(greenColor, bgColor, normalTextTarget, opts))
 	}
 
@@ -351,7 +351,7 @@ func GeneratePalette(baseColor string, opts PaletteOptions) []string {
 		yellowColor = RGBToHex(HSVToRGB(HSV{H: yellowH, S: math.Min(0.75*satBoost, 1.0), V: 0.50}))
 		palette = append(palette, ensureContrastAuto(yellowColor, bgColor, normalTextTarget, opts))
 	} else {
-		yellowColor = RGBToHex(HSVToRGB(HSV{H: yellowH, S: math.Min(0.40*satBoost, 1.0), V: 0.90}))
+		yellowColor = RGBToHex(HSVToRGB(HSV{H: yellowH, S: math.Min(0.38*satBoost, 1.0), V: 0.86}))
 		palette = append(palette, ensureContrastAuto(yellowColor, bgColor, normalTextTarget, opts))
 	}
 
@@ -430,11 +430,11 @@ func GeneratePalette(baseColor string, opts PaletteOptions) []string {
 		brightCyan := RGBToHex(HSVToRGB(HSV{H: cyanH, S: math.Max(hsv.S*0.75, 0.65), V: math.Min(hsv.V*1.25, 1.0)}))
 		palette = append(palette, ensureContrastAuto(brightCyan, bgColor, secondaryTarget, opts))
 	} else {
-		brightRed := RGBToHex(HSVToRGB(HSV{H: redH, S: math.Min(0.55*satBoost, 1.0), V: math.Min(1.0, 0.92)}))
+		brightRed := RGBToHex(HSVToRGB(HSV{H: redH, S: math.Min(0.50*satBoost, 1.0), V: 0.88}))
 		palette = append(palette, ensureContrastAuto(brightRed, bgColor, secondaryTarget, opts))
-		brightGreen := RGBToHex(HSVToRGB(HSV{H: greenH, S: math.Min(0.38*satBoost, 1.0), V: 0.92}))
+		brightGreen := RGBToHex(HSVToRGB(HSV{H: greenH, S: math.Min(0.35*satBoost, 1.0), V: 0.88}))
 		palette = append(palette, ensureContrastAuto(brightGreen, bgColor, secondaryTarget, opts))
-		brightYellow := RGBToHex(HSVToRGB(HSV{H: yellowH, S: math.Min(0.32*satBoost, 1.0), V: 0.95}))
+		brightYellow := RGBToHex(HSVToRGB(HSV{H: yellowH, S: math.Min(0.30*satBoost, 1.0), V: 0.91}))
 		palette = append(palette, ensureContrastAuto(brightYellow, bgColor, secondaryTarget, opts))
 		if opts.HonorPrimary != "" {
 			// Make it way brighter for type names in dark mode
