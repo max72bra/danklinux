@@ -345,52 +345,54 @@ func (m *Manager) updateState() {
 func (m *Manager) notifier() {
 	defer m.notifierWg.Done()
 	const minGap = 100 * time.Millisecond
-	var timer *time.Timer
+	timer := time.NewTimer(minGap)
+	timer.Stop()
 	var pending bool
 
 	for {
 		select {
 		case <-m.stopChan:
+			timer.Stop()
 			return
 		case <-m.dirty:
 			if pending {
 				continue
 			}
 			pending = true
-			if timer != nil {
-				timer.Stop()
+			timer.Reset(minGap)
+		case <-timer.C:
+			if !pending {
+				continue
 			}
-			timer = time.AfterFunc(minGap, func() {
-				m.subMutex.RLock()
-				subCount := len(m.subscribers)
-				m.subMutex.RUnlock()
+			m.subMutex.RLock()
+			subCount := len(m.subscribers)
+			m.subMutex.RUnlock()
 
-				if subCount == 0 {
-					pending = false
-					return
-				}
-
-				currentState := m.GetState()
-
-				if m.lastNotified != nil && !stateChanged(m.lastNotified, &currentState) {
-					pending = false
-					return
-				}
-
-				m.subMutex.RLock()
-				for _, ch := range m.subscribers {
-					select {
-					case ch <- currentState:
-					default:
-						log.Warn("DWL: subscriber channel full, dropping update")
-					}
-				}
-				m.subMutex.RUnlock()
-
-				stateCopy := currentState
-				m.lastNotified = &stateCopy
+			if subCount == 0 {
 				pending = false
-			})
+				continue
+			}
+
+			currentState := m.GetState()
+
+			if m.lastNotified != nil && !stateChanged(m.lastNotified, &currentState) {
+				pending = false
+				continue
+			}
+
+			m.subMutex.RLock()
+			for _, ch := range m.subscribers {
+				select {
+				case ch <- currentState:
+				default:
+					log.Warn("DWL: subscriber channel full, dropping update")
+				}
+			}
+			m.subMutex.RUnlock()
+
+			stateCopy := currentState
+			m.lastNotified = &stateCopy
+			pending = false
 		}
 	}
 }

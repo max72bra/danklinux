@@ -226,15 +226,6 @@ func (m *Manager) getSessionProperties(ctx context.Context) (map[string]dbus.Var
 	return props, nil
 }
 
-func (m *Manager) getSessionProperty(ctx context.Context, property string) (*dbus.Variant, error) {
-	var prop dbus.Variant
-	err := m.sessionObj.CallWithContext(ctx, dbusPropsInterface+".Get", 0, dbusSessionInterface, property).Store(&prop)
-	if err != nil {
-		return nil, err
-	}
-	return &prop, nil
-}
-
 func (m *Manager) acquireSleepInhibitor() error {
 	if !m.sleepInhibitorEnabled.Load() {
 		return nil
@@ -275,7 +266,7 @@ func (m *Manager) releaseSleepInhibitor() {
 	m.inhibitFile = nil
 	m.inhibitMu.Unlock()
 	if f != nil {
-		_ = f.Close()
+		f.Close()
 	}
 }
 
@@ -378,48 +369,50 @@ func (m *Manager) Unsubscribe(id string) {
 func (m *Manager) notifier() {
 	defer m.notifierWg.Done()
 	const minGap = 100 * time.Millisecond
-	var timer *time.Timer
+	timer := time.NewTimer(minGap)
+	timer.Stop()
 	var pending bool
 	for {
 		select {
 		case <-m.stopChan:
+			timer.Stop()
 			return
 		case <-m.dirty:
 			if pending {
 				continue
 			}
 			pending = true
-			if timer != nil {
-				timer.Stop()
+			timer.Reset(minGap)
+		case <-timer.C:
+			if !pending {
+				continue
 			}
-			timer = time.AfterFunc(minGap, func() {
-				m.subMutex.RLock()
-				if len(m.subscribers) == 0 {
-					m.subMutex.RUnlock()
-					pending = false
-					return
-				}
-
-				currentState := m.snapshotState()
-
-				if m.lastNotifiedState != nil && !stateChangedMeaningfully(m.lastNotifiedState, &currentState) {
-					m.subMutex.RUnlock()
-					pending = false
-					return
-				}
-
-				for _, ch := range m.subscribers {
-					select {
-					case ch <- currentState:
-					default:
-					}
-				}
+			m.subMutex.RLock()
+			if len(m.subscribers) == 0 {
 				m.subMutex.RUnlock()
-
-				stateCopy := currentState
-				m.lastNotifiedState = &stateCopy
 				pending = false
-			})
+				continue
+			}
+
+			currentState := m.snapshotState()
+
+			if m.lastNotifiedState != nil && !stateChangedMeaningfully(m.lastNotifiedState, &currentState) {
+				m.subMutex.RUnlock()
+				pending = false
+				continue
+			}
+
+			for _, ch := range m.subscribers {
+				select {
+				case ch <- currentState:
+				default:
+				}
+			}
+			m.subMutex.RUnlock()
+
+			stateCopy := currentState
+			m.lastNotifiedState = &stateCopy
+			pending = false
 		}
 	}
 }
@@ -447,7 +440,7 @@ func (m *Manager) startSignalPump() error {
 		dbus.WithMatchInterface(dbusSessionInterface),
 		dbus.WithMatchMember("Lock"),
 	); err != nil {
-		_ = m.conn.RemoveMatchSignal(
+		m.conn.RemoveMatchSignal(
 			dbus.WithMatchObjectPath(m.sessionPath),
 			dbus.WithMatchInterface(dbusPropsInterface),
 			dbus.WithMatchMember("PropertiesChanged"),
@@ -460,12 +453,12 @@ func (m *Manager) startSignalPump() error {
 		dbus.WithMatchInterface(dbusSessionInterface),
 		dbus.WithMatchMember("Unlock"),
 	); err != nil {
-		_ = m.conn.RemoveMatchSignal(
+		m.conn.RemoveMatchSignal(
 			dbus.WithMatchObjectPath(m.sessionPath),
 			dbus.WithMatchInterface(dbusPropsInterface),
 			dbus.WithMatchMember("PropertiesChanged"),
 		)
-		_ = m.conn.RemoveMatchSignal(
+		m.conn.RemoveMatchSignal(
 			dbus.WithMatchObjectPath(m.sessionPath),
 			dbus.WithMatchInterface(dbusSessionInterface),
 			dbus.WithMatchMember("Lock"),
@@ -478,17 +471,17 @@ func (m *Manager) startSignalPump() error {
 		dbus.WithMatchInterface(dbusManagerInterface),
 		dbus.WithMatchMember("PrepareForSleep"),
 	); err != nil {
-		_ = m.conn.RemoveMatchSignal(
+		m.conn.RemoveMatchSignal(
 			dbus.WithMatchObjectPath(m.sessionPath),
 			dbus.WithMatchInterface(dbusPropsInterface),
 			dbus.WithMatchMember("PropertiesChanged"),
 		)
-		_ = m.conn.RemoveMatchSignal(
+		m.conn.RemoveMatchSignal(
 			dbus.WithMatchObjectPath(m.sessionPath),
 			dbus.WithMatchInterface(dbusSessionInterface),
 			dbus.WithMatchMember("Lock"),
 		)
-		_ = m.conn.RemoveMatchSignal(
+		m.conn.RemoveMatchSignal(
 			dbus.WithMatchObjectPath(m.sessionPath),
 			dbus.WithMatchInterface(dbusSessionInterface),
 			dbus.WithMatchMember("Unlock"),
@@ -502,22 +495,22 @@ func (m *Manager) startSignalPump() error {
 		dbus.WithMatchInterface("org.freedesktop.DBus"),
 		dbus.WithMatchMember("NameOwnerChanged"),
 	); err != nil {
-		_ = m.conn.RemoveMatchSignal(
+		m.conn.RemoveMatchSignal(
 			dbus.WithMatchObjectPath(m.sessionPath),
 			dbus.WithMatchInterface(dbusPropsInterface),
 			dbus.WithMatchMember("PropertiesChanged"),
 		)
-		_ = m.conn.RemoveMatchSignal(
+		m.conn.RemoveMatchSignal(
 			dbus.WithMatchObjectPath(m.sessionPath),
 			dbus.WithMatchInterface(dbusSessionInterface),
 			dbus.WithMatchMember("Lock"),
 		)
-		_ = m.conn.RemoveMatchSignal(
+		m.conn.RemoveMatchSignal(
 			dbus.WithMatchObjectPath(m.sessionPath),
 			dbus.WithMatchInterface(dbusSessionInterface),
 			dbus.WithMatchMember("Unlock"),
 		)
-		_ = m.conn.RemoveMatchSignal(
+		m.conn.RemoveMatchSignal(
 			dbus.WithMatchObjectPath(dbus.ObjectPath(dbusPath)),
 			dbus.WithMatchInterface(dbusManagerInterface),
 			dbus.WithMatchMember("PrepareForSleep"),
@@ -551,27 +544,27 @@ func (m *Manager) stopSignalPump() {
 	if m.conn == nil {
 		return
 	}
-	_ = m.conn.RemoveMatchSignal(
+	m.conn.RemoveMatchSignal(
 		dbus.WithMatchObjectPath(m.sessionPath),
 		dbus.WithMatchInterface(dbusPropsInterface),
 		dbus.WithMatchMember("PropertiesChanged"),
 	)
-	_ = m.conn.RemoveMatchSignal(
+	m.conn.RemoveMatchSignal(
 		dbus.WithMatchObjectPath(m.sessionPath),
 		dbus.WithMatchInterface(dbusSessionInterface),
 		dbus.WithMatchMember("Lock"),
 	)
-	_ = m.conn.RemoveMatchSignal(
+	m.conn.RemoveMatchSignal(
 		dbus.WithMatchObjectPath(m.sessionPath),
 		dbus.WithMatchInterface(dbusSessionInterface),
 		dbus.WithMatchMember("Unlock"),
 	)
-	_ = m.conn.RemoveMatchSignal(
+	m.conn.RemoveMatchSignal(
 		dbus.WithMatchObjectPath(dbus.ObjectPath(dbusPath)),
 		dbus.WithMatchInterface(dbusManagerInterface),
 		dbus.WithMatchMember("PrepareForSleep"),
 	)
-	_ = m.conn.RemoveMatchSignal(
+	m.conn.RemoveMatchSignal(
 		dbus.WithMatchObjectPath("/org/freedesktop/DBus"),
 		dbus.WithMatchInterface("org.freedesktop.DBus"),
 		dbus.WithMatchMember("NameOwnerChanged"),

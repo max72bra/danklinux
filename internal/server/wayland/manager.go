@@ -23,15 +23,16 @@ func NewManager(display *wlclient.Display, config Config) (*Manager, error) {
 	}
 
 	m := &Manager{
-		config:        config,
-		display:       display,
-		outputs:       make(map[uint32]*outputState),
-		cmdq:          make(chan cmd, 128),
-		stopChan:      make(chan struct{}),
-		updateTrigger: make(chan struct{}, 1),
-		subscribers:   make(map[string]chan State),
-		dirty:         make(chan struct{}, 1),
-		dbusSignal:    make(chan *dbus.Signal, 16),
+		config:         config,
+		display:        display,
+		outputs:        make(map[uint32]*outputState),
+		cmdq:           make(chan cmd, 128),
+		stopChan:       make(chan struct{}),
+		updateTrigger:  make(chan struct{}, 1),
+		subscribers:    make(map[string]chan State),
+		dirty:          make(chan struct{}, 1),
+		dbusSignal:     make(chan *dbus.Signal, 16),
+		transitionChan: make(chan int, 1),
 	}
 
 	if err := m.setupRegistry(); err != nil {
@@ -68,6 +69,9 @@ func NewManager(display *wlclient.Display, config Config) (*Manager, error) {
 
 	m.wg.Add(1)
 	go m.waylandActor()
+
+	m.wg.Add(1)
+	go m.transitionWorker()
 
 	if config.Enabled {
 		m.post(func() {
@@ -349,7 +353,7 @@ func (m *Manager) setupOutputControls(outputs []*wlclient.Output, manager *wlr_g
 
 					time.AfterFunc(backoff, func() {
 						m.post(func() {
-							_ = m.recreateOutputControl(outState)
+							m.recreateOutputControl(outState)
 						})
 					})
 				}
@@ -435,7 +439,7 @@ func (m *Manager) addOutputControl(output *wlclient.Output) error {
 
 			time.AfterFunc(backoff, func() {
 				m.post(func() {
-					_ = m.recreateOutputControl(out)
+					m.recreateOutputControl(out)
 				})
 			})
 		}
@@ -545,72 +549,107 @@ func (m *Manager) startTransition(targetTemp int) {
 		log.Debugf("Skipping transition: already at %dK", targetTemp)
 		return
 	}
-
-	m.transitionSerial++
-	serial := m.transitionSerial
 	m.transitionMutex.Unlock()
 
-	go func(currentTemp, targetTemp int, mySerial int64) {
-		const dur = 1 * time.Second
-		const fps = 30
-		steps := int(dur.Seconds() * fps)
+	select {
+	case m.transitionChan <- targetTemp:
+	default:
+	}
+}
 
-		log.Debugf("Starting smooth transition: %dK -> %dK over %v", currentTemp, targetTemp, dur)
+func (m *Manager) transitionWorker() {
+	defer m.wg.Done()
+	const dur = 1 * time.Second
+	const fps = 30
+	steps := int(dur.Seconds() * fps)
+	stepDur := dur / time.Duration(steps)
 
-		for i := 0; i <= steps; i++ {
-			m.transitionMutex.RLock()
-			if m.transitionSerial != mySerial {
-				m.transitionMutex.RUnlock()
-				log.Debugf("Transition %dK -> %dK aborted (newer transition started)", currentTemp, targetTemp)
-				return
+	for {
+		select {
+		case <-m.stopChan:
+			return
+		case targetTemp := <-m.transitionChan:
+			m.transitionMutex.Lock()
+			currentTemp := m.currentTemp
+			m.targetTemp = targetTemp
+			m.transitionMutex.Unlock()
+
+			if currentTemp == targetTemp {
+				continue
 			}
+
+			log.Debugf("Starting smooth transition: %dK -> %dK over %v", currentTemp, targetTemp, dur)
+
+			for i := 0; i <= steps; i++ {
+				select {
+				case newTarget := <-m.transitionChan:
+					m.transitionMutex.Lock()
+					m.targetTemp = newTarget
+					m.transitionMutex.Unlock()
+					log.Debugf("Transition %dK -> %dK aborted (newer transition started)", currentTemp, targetTemp)
+					break
+				default:
+				}
+
+				m.transitionMutex.RLock()
+				if m.targetTemp != targetTemp {
+					m.transitionMutex.RUnlock()
+					break
+				}
+				m.transitionMutex.RUnlock()
+
+				progress := float64(i) / float64(steps)
+				temp := currentTemp + int(float64(targetTemp-currentTemp)*progress)
+
+				m.post(func() { m.applyNowOnActor(temp) })
+
+				if i < steps {
+					time.Sleep(stepDur)
+				}
+			}
+
+			m.transitionMutex.RLock()
+			finalTarget := m.targetTemp
 			m.transitionMutex.RUnlock()
 
-			progress := float64(i) / float64(steps)
-			temp := currentTemp + int(float64(targetTemp-currentTemp)*progress)
+			if finalTarget == targetTemp {
+				log.Debugf("Transition complete: now at %dK", targetTemp)
 
-			m.post(func() { m.applyNowOnActor(temp) })
+				m.configMutex.RLock()
+				enabled := m.config.Enabled
+				identityTemp := m.config.HighTemp
+				m.configMutex.RUnlock()
 
-			if i < steps {
-				time.Sleep(dur / time.Duration(steps))
+				if !enabled && targetTemp == identityTemp && m.controlsInitialized {
+					m.post(func() {
+						log.Info("Destroying gamma controls after transition to identity")
+						m.outputsMutex.Lock()
+						for id, out := range m.outputs {
+							if out.gammaControl != nil {
+								control := out.gammaControl.(*wlr_gamma_control.ZwlrGammaControlV1)
+								control.Destroy()
+								log.Debugf("Destroyed gamma control for output %d", id)
+							}
+						}
+						m.outputs = make(map[uint32]*outputState)
+						m.controlsInitialized = false
+						m.outputsMutex.Unlock()
+
+						m.transitionMutex.Lock()
+						m.currentTemp = identityTemp
+						m.targetTemp = identityTemp
+						m.transitionMutex.Unlock()
+
+						if _, err := m.display.Sync(); err != nil {
+							log.Warnf("Failed to sync Wayland display after destroying controls: %v", err)
+						}
+
+						log.Info("All gamma controls destroyed")
+					})
+				}
 			}
 		}
-
-		log.Debugf("Transition complete: now at %dK", targetTemp)
-
-		m.configMutex.RLock()
-		enabled := m.config.Enabled
-		identityTemp := m.config.HighTemp
-		m.configMutex.RUnlock()
-
-		if !enabled && targetTemp == identityTemp && m.controlsInitialized {
-			m.post(func() {
-				log.Info("Destroying gamma controls after transition to identity")
-				m.outputsMutex.Lock()
-				for id, out := range m.outputs {
-					if out.gammaControl != nil {
-						control := out.gammaControl.(*wlr_gamma_control.ZwlrGammaControlV1)
-						control.Destroy()
-						log.Debugf("Destroyed gamma control for output %d", id)
-					}
-				}
-				m.outputs = make(map[uint32]*outputState)
-				m.controlsInitialized = false
-				m.outputsMutex.Unlock()
-
-				m.transitionMutex.Lock()
-				m.currentTemp = identityTemp
-				m.targetTemp = identityTemp
-				m.transitionMutex.Unlock()
-
-				if _, err := m.display.Sync(); err != nil {
-					log.Warnf("Failed to sync Wayland display after destroying controls: %v", err)
-				}
-
-				log.Info("All gamma controls destroyed")
-			})
-		}
-	}(current, targetTemp, serial)
+	}
 }
 
 func (m *Manager) recreateOutputControl(out *outputState) error {
@@ -685,7 +724,7 @@ func (m *Manager) recreateOutputControl(out *outputState) error {
 
 			time.AfterFunc(backoff, func() {
 				m.post(func() {
-					_ = m.recreateOutputControl(outState)
+					m.recreateOutputControl(outState)
 				})
 			})
 		}
@@ -740,13 +779,13 @@ func (m *Manager) applyNowOnActor(temp int) {
 		// Pack once into []byte
 		buf := bytes.NewBuffer(make([]byte, 0, int(out.rampSize)*6))
 		for _, v := range ramp.Red {
-			_ = binary.Write(buf, binary.LittleEndian, v)
+			binary.Write(buf, binary.LittleEndian, v)
 		}
 		for _, v := range ramp.Green {
-			_ = binary.Write(buf, binary.LittleEndian, v)
+			binary.Write(buf, binary.LittleEndian, v)
 		}
 		for _, v := range ramp.Blue {
-			_ = binary.Write(buf, binary.LittleEndian, v)
+			binary.Write(buf, binary.LittleEndian, v)
 		}
 
 		jobs = append(jobs, job{out: out, data: buf.Bytes()})
@@ -770,7 +809,7 @@ func (m *Manager) applyNowOnActor(temp int) {
 					out, exists := m.outputs[outID]
 					m.outputsMutex.RUnlock()
 					if exists && out.failed {
-						_ = m.recreateOutputControl(out)
+						m.recreateOutputControl(out)
 					}
 				})
 			})
@@ -877,49 +916,51 @@ func (m *Manager) updateState() {
 func (m *Manager) notifier() {
 	defer m.notifierWg.Done()
 	const minGap = 100 * time.Millisecond
-	var timer *time.Timer
+	timer := time.NewTimer(minGap)
+	timer.Stop()
 	var pending bool
 
 	for {
 		select {
 		case <-m.stopChan:
+			timer.Stop()
 			return
 		case <-m.dirty:
 			if pending {
 				continue
 			}
 			pending = true
-			if timer != nil {
-				timer.Stop()
+			timer.Reset(minGap)
+		case <-timer.C:
+			if !pending {
+				continue
 			}
-			timer = time.AfterFunc(minGap, func() {
-				m.subMutex.RLock()
-				if len(m.subscribers) == 0 {
-					m.subMutex.RUnlock()
-					pending = false
-					return
-				}
-
-				currentState := m.GetState()
-
-				if m.lastNotified != nil && !stateChanged(m.lastNotified, &currentState) {
-					m.subMutex.RUnlock()
-					pending = false
-					return
-				}
-
-				for _, ch := range m.subscribers {
-					select {
-					case ch <- currentState:
-					default:
-					}
-				}
+			m.subMutex.RLock()
+			if len(m.subscribers) == 0 {
 				m.subMutex.RUnlock()
-
-				stateCopy := currentState
-				m.lastNotified = &stateCopy
 				pending = false
-			})
+				continue
+			}
+
+			currentState := m.GetState()
+
+			if m.lastNotified != nil && !stateChanged(m.lastNotified, &currentState) {
+				m.subMutex.RUnlock()
+				pending = false
+				continue
+			}
+
+			for _, ch := range m.subscribers {
+				select {
+				case ch <- currentState:
+				default:
+				}
+			}
+			m.subMutex.RUnlock()
+
+			stateCopy := currentState
+			m.lastNotified = &stateCopy
+			pending = false
 		}
 	}
 }

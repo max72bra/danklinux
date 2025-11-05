@@ -58,12 +58,10 @@ type Model struct {
 	hyprlandInstalled bool
 	niriInstalled     bool
 
-	// Greeter states
 	selectedGreeterItem     int
 	greeterInstallChan      chan greeterProgressMsg
 	greeterProgress         greeterProgressMsg
 	greeterLogs             []string
-	greeterNeedsPassword    bool
 	greeterPasswordInput    string
 	greeterPasswordError    string
 	greeterSudoPassword     string

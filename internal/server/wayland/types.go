@@ -56,16 +56,13 @@ type Manager struct {
 	alive bool
 
 	stopChan      chan struct{}
-	updateTicker  *time.Ticker
 	updateTrigger chan struct{}
 	wg            sync.WaitGroup
 
-	currentTemp      int
-	targetTemp       int
-	transitionSerial int64
-	transitionMutex  sync.RWMutex
-
-	applyTimer *time.Timer
+	currentTemp     int
+	targetTemp      int
+	transitionMutex sync.RWMutex
+	transitionChan  chan int
 
 	cachedIPLat   *float64
 	cachedIPLon   *float64

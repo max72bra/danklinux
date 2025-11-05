@@ -80,7 +80,7 @@ func (m *Manager) SetSleepInhibitorEnabled(enabled bool) {
 	m.sleepInhibitorEnabled.Store(enabled)
 	if enabled {
 		// Re-acquire inhibitor if enabled
-		_ = m.acquireSleepInhibitor()
+		m.acquireSleepInhibitor()
 	} else {
 		// Release inhibitor if disabled
 		m.releaseSleepInhibitor()

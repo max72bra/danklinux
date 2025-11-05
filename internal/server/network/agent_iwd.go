@@ -97,7 +97,7 @@ func NewIWDAgent(prompts PromptBroker) (*IWDAgent, error) {
 func (a *IWDAgent) Close() {
 	if a.conn != nil {
 		mgr := a.conn.Object("net.connman.iwd", dbus.ObjectPath(iwdAgentManagerPath))
-		_ = mgr.Call(iwdAgentManagerIface+".UnregisterAgent", 0, a.objPath).Err
+		mgr.Call(iwdAgentManagerIface+".UnregisterAgent", 0, a.objPath)
 		a.conn.Close()
 	}
 }

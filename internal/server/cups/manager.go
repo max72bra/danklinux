@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
-	"reflect"
 	"regexp"
 	"strconv"
 	"strings"
@@ -70,7 +69,6 @@ func (m *Manager) initialize() error {
 	obj := m.dbusConn.Object(cupsService, cupsPath)
 	err := obj.Call("org.freedesktop.DBus.Peer.Ping", 0).Store()
 	if err != nil {
-		// fallback on stat on cups log and inject fake dbus signals
 		log.Warnf("[CUPS] D-Bus interface not available. Fallback to log parsing")
 		lm, err := m.NewLogMonitor()
 		if err == nil {
@@ -134,19 +132,25 @@ func (lm *LogMonitor) monitorLogFile(logPath string) {
 			cmd.Process.Kill()
 			return
 		default:
-			line, err := reader.ReadString('\n')
-			if err != nil {
-				if err == io.EOF {
-					time.Sleep(100 * time.Millisecond)
+		}
+
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			if err == io.EOF {
+				select {
+				case <-lm.ctx.Done():
+					cmd.Process.Kill()
+					return
+				case <-time.After(100 * time.Millisecond):
 					continue
 				}
-				log.Errorf("[CUPS] Read error log: %v", err)
-				return
 			}
+			log.Errorf("[CUPS] Read error log: %v", err)
+			return
+		}
 
-			if line != "" {
-				lm.processLogLine(strings.TrimSpace(line))
-			}
+		if line != "" {
+			lm.processLogLine(strings.TrimSpace(line))
 		}
 	}
 }
@@ -179,12 +183,10 @@ func (lm *LogMonitor) processLogLine(line string) {
 	}
 }
 
-func (lm *LogMonitor) parseLogLine(line string) (*CUPSAccessLogEntry, error) {
-	// Pattern regex access_log
-	// localhost - - [01/Jan/2025:10:30:45 +0100] "POST /printers/PDF HTTP/1.1" 200 123 Print-Job successful-ok
-	pattern := `^(\S+)\s+(\S+)\s+(\S+)\s+\[([^\]]+)\]\s+"([A-Z]+)\s+(\S+)\s+([^"]+)"\s+(\d+)\s+(\d+)(?:\s+(\S+))?(?:\s+(\S+))?`
+var accessLogPattern = regexp.MustCompile(`^(\S+)\s+(\S+)\s+(\S+)\s+\[([^\]]+)\]\s+"([A-Z]+)\s+(\S+)\s+([^"]+)"\s+(\d+)\s+(\d+)(?:\s+(\S+))?(?:\s+(\S+))?`)
 
-	re := regexp.MustCompile(pattern)
+func (lm *LogMonitor) parseLogLine(line string) (*CUPSAccessLogEntry, error) {
+	re := accessLogPattern
 	matches := re.FindStringSubmatch(line)
 
 	if len(matches) < 10 {
@@ -378,8 +380,8 @@ func (m *Manager) InjectSignal(name string, body ...interface{}) bool {
 	select {
 	case m.signals <- sig:
 		return true
-	case <-time.After(2 * time.Second):
-		return false // Timeout
+	default:
+		return false
 	}
 }
 
@@ -406,48 +408,50 @@ func (m *Manager) InjectJobCompleted(printerName string) bool {
 func (m *Manager) notifier() {
 	defer m.notifierWg.Done()
 	const minGap = 100 * time.Millisecond
-	var timer *time.Timer
+	timer := time.NewTimer(minGap)
+	timer.Stop()
 	var pending bool
 	for {
 		select {
 		case <-m.stopChan:
+			timer.Stop()
 			return
 		case <-m.dirty:
 			if pending {
 				continue
 			}
 			pending = true
-			if timer != nil {
-				timer.Stop()
+			timer.Reset(minGap)
+		case <-timer.C:
+			if !pending {
+				continue
 			}
-			timer = time.AfterFunc(minGap, func() {
-				m.subMutex.RLock()
-				if len(m.subscribers) == 0 {
-					m.subMutex.RUnlock()
-					pending = false
-					return
-				}
-
-				currentState := m.snapshotState()
-
-				if m.lastNotifiedState != nil && !stateChanged(m.lastNotifiedState, &currentState) {
-					m.subMutex.RUnlock()
-					pending = false
-					return
-				}
-
-				for _, ch := range m.subscribers {
-					select {
-					case ch <- currentState:
-					default:
-					}
-				}
+			m.subMutex.RLock()
+			if len(m.subscribers) == 0 {
 				m.subMutex.RUnlock()
-
-				stateCopy := currentState
-				m.lastNotifiedState = &stateCopy
 				pending = false
-			})
+				continue
+			}
+
+			currentState := m.snapshotState()
+
+			if m.lastNotifiedState != nil && !stateChanged(m.lastNotifiedState, &currentState) {
+				m.subMutex.RUnlock()
+				pending = false
+				continue
+			}
+
+			for _, ch := range m.subscribers {
+				select {
+				case ch <- currentState:
+				default:
+				}
+			}
+			m.subMutex.RUnlock()
+
+			stateCopy := currentState
+			m.lastNotifiedState = &stateCopy
+			pending = false
 		}
 	}
 }
@@ -518,5 +522,19 @@ func (m *Manager) Close() {
 }
 
 func stateChanged(old, new *CUPSState) bool {
-	return !reflect.DeepEqual(old, new)
+	if len(old.Printers) != len(new.Printers) {
+		return true
+	}
+	for name, oldPrinter := range old.Printers {
+		newPrinter, exists := new.Printers[name]
+		if !exists {
+			return true
+		}
+		if oldPrinter.State != newPrinter.State ||
+			oldPrinter.StateReason != newPrinter.StateReason ||
+			len(oldPrinter.Jobs) != len(newPrinter.Jobs) {
+			return true
+		}
+	}
+	return false
 }

@@ -55,11 +55,10 @@ type Manager struct {
 	updateSubscribers map[string]chan DeviceUpdate
 	subMutex          sync.RWMutex
 
-	broadcastMutex    sync.Mutex
-	broadcastTimer    *time.Timer
-	broadcastPending  bool
-	pendingDeviceID   string
-	pendingDeviceData Device
+	broadcastMutex   sync.Mutex
+	broadcastTimer   *time.Timer
+	broadcastPending bool
+	pendingDeviceID  string
 
 	stopChan chan struct{}
 }

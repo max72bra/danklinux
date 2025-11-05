@@ -213,26 +213,26 @@ func (b *DDCBackend) SetBrightness(id string, percent int, logarithmic bool) err
 	b.debouncePending[id] = percent
 
 	if timer, exists := b.debounceTimers[id]; exists {
-		timer.Stop()
+		timer.Reset(200 * time.Millisecond)
+	} else {
+		b.debounceTimers[id] = time.AfterFunc(200*time.Millisecond, func() {
+			b.debounceMutex.Lock()
+			pendingPercent, exists := b.debouncePending[id]
+			if exists {
+				delete(b.debouncePending, id)
+			}
+			b.debounceMutex.Unlock()
+
+			if !exists {
+				return
+			}
+
+			err := b.setBrightnessImmediate(id, pendingPercent, logarithmic)
+			if err != nil {
+				log.Debugf("Failed to set brightness for %s: %v", id, err)
+			}
+		})
 	}
-
-	b.debounceTimers[id] = time.AfterFunc(200*time.Millisecond, func() {
-		b.debounceMutex.Lock()
-		pendingPercent, exists := b.debouncePending[id]
-		if exists {
-			delete(b.debouncePending, id)
-		}
-		b.debounceMutex.Unlock()
-
-		if !exists {
-			return
-		}
-
-		err := b.setBrightnessImmediate(id, pendingPercent, logarithmic)
-		if err != nil {
-			log.Debugf("Failed to set brightness for %s: %v", id, err)
-		}
-	})
 
 	return nil
 }

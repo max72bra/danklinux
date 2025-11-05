@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/AvengeMedia/danklinux/internal/errdefs"
@@ -21,20 +20,12 @@ const (
 )
 
 type SecretAgent struct {
-	conn           *dbus.Conn
-	objPath        dbus.ObjectPath
-	id             string
-	prompts        PromptBroker
-	manager        *Manager
-	backend        *NetworkManagerBackend
-	pendingSaves   map[string]pendingSave // key: connection path
-	pendingSavesMu sync.RWMutex
-}
-
-type pendingSave struct {
-	settingName string
-	secrets     map[string]string
-	save        bool
+	conn    *dbus.Conn
+	objPath dbus.ObjectPath
+	id      string
+	prompts PromptBroker
+	manager *Manager
+	backend *NetworkManagerBackend
 }
 
 type nmVariantMap map[string]dbus.Variant
@@ -78,13 +69,12 @@ func NewSecretAgent(prompts PromptBroker, manager *Manager, backend *NetworkMana
 	}
 
 	sa := &SecretAgent{
-		conn:         c,
-		objPath:      dbus.ObjectPath(agentObjectPath),
-		id:           agentIdentifier,
-		prompts:      prompts,
-		manager:      manager,
-		pendingSaves: make(map[string]pendingSave),
-		backend:      backend,
+		conn:    c,
+		objPath: dbus.ObjectPath(agentObjectPath),
+		id:      agentIdentifier,
+		prompts: prompts,
+		manager: manager,
+		backend: backend,
 	}
 
 	if err := c.Export(sa, sa.objPath, nmSecretAgentIface); err != nil {
@@ -111,7 +101,7 @@ func NewSecretAgent(prompts PromptBroker, manager *Manager, backend *NetworkMana
 func (a *SecretAgent) Close() {
 	if a.conn != nil {
 		mgr := a.conn.Object("org.freedesktop.NetworkManager", dbus.ObjectPath(nmAgentManagerPath))
-		_ = mgr.Call(nmAgentManagerIface+".Unregister", 0, a.id).Err
+		mgr.Call(nmAgentManagerIface+".Unregister", 0, a.id)
 		a.conn.Close()
 	}
 }

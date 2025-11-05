@@ -151,9 +151,6 @@ func (m Model) viewWelcome() string {
 		spinner := m.spinner.View()
 		loading := m.styles.Normal.Render("Detecting system...")
 		b.WriteString(fmt.Sprintf("%s %s\n\n", spinner, loading))
-
-	} else {
-		// ! TODO - error state?
 	}
 
 	// Footer with better visual separation

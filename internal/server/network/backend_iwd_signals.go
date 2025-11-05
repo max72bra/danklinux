@@ -176,7 +176,7 @@ func (b *IWDBackend) signalHandler(sigChan chan *dbus.Signal) {
 							if connPath == "" {
 								station := b.conn.Object(iwdBusName, b.stationPath)
 								if cnVar, err := station.GetProperty(iwdStationInterface + ".ConnectedNetwork"); err == nil && cnVar.Value() != nil {
-									_ = cnVar.Store(&connPath)
+									cnVar.Store(&connPath)
 								}
 							}
 
@@ -244,11 +244,11 @@ func (b *IWDBackend) signalHandler(sigChan chan *dbus.Signal) {
 										station := b.conn.Object(iwdBusName, b.stationPath)
 										var nowState string
 										if stVar, err := station.GetProperty(iwdStationInterface + ".State"); err == nil {
-											_ = stVar.Store(&nowState)
+											stVar.Store(&nowState)
 										}
 										var nowConn dbus.ObjectPath
 										if cnVar, err := station.GetProperty(iwdStationInterface + ".ConnectedNetwork"); err == nil && cnVar.Value() != nil {
-											_ = cnVar.Store(&nowConn)
+											cnVar.Store(&nowConn)
 										}
 
 										if nowState == "connected" && nowConn == tgt {

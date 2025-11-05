@@ -75,4 +75,6 @@ type Manager struct {
 	adapterPath        dbus.ObjectPath
 	pendingPairings    map[string]bool
 	pendingPairingsMux sync.Mutex
+	eventQueue         chan func()
+	eventWg            sync.WaitGroup
 }

@@ -295,24 +295,24 @@ func (m *Manager) debouncedBroadcast(deviceID string) {
 	m.broadcastPending = true
 	m.pendingDeviceID = deviceID
 
-	if m.broadcastTimer != nil {
-		m.broadcastTimer.Stop()
+	if m.broadcastTimer == nil {
+		m.broadcastTimer = time.AfterFunc(150*time.Millisecond, func() {
+			m.broadcastMutex.Lock()
+			pending := m.broadcastPending
+			deviceID := m.pendingDeviceID
+			m.broadcastPending = false
+			m.pendingDeviceID = ""
+			m.broadcastMutex.Unlock()
+
+			if !pending || deviceID == "" {
+				return
+			}
+
+			m.broadcastDeviceUpdate(deviceID)
+		})
+	} else {
+		m.broadcastTimer.Reset(150 * time.Millisecond)
 	}
-
-	m.broadcastTimer = time.AfterFunc(150*time.Millisecond, func() {
-		m.broadcastMutex.Lock()
-		pending := m.broadcastPending
-		deviceID := m.pendingDeviceID
-		m.broadcastPending = false
-		m.pendingDeviceID = ""
-		m.broadcastMutex.Unlock()
-
-		if !pending || deviceID == "" {
-			return
-		}
-
-		m.broadcastDeviceUpdate(deviceID)
-	})
 }
 
 func (m *Manager) broadcastDeviceUpdate(deviceID string) {

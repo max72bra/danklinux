@@ -43,7 +43,7 @@ func (m *Manager) handleDBusSignal(sig *dbus.Signal) {
 		m.lockTimerMu.Unlock()
 
 		// Re-acquire the sleep inhibitor (acquireSleepInhibitor checks the enabled flag)
-		_ = m.acquireSleepInhibitor()
+		m.acquireSleepInhibitor()
 
 	case dbusManagerInterface + ".PrepareForSleep":
 		if len(sig.Body) == 0 {
@@ -56,7 +56,7 @@ func (m *Manager) handleDBusSignal(sig *dbus.Signal) {
 			m.inSleepCycle.Store(true)
 
 			if m.lockBeforeSuspend.Load() {
-				_ = m.Lock()
+				m.Lock()
 			}
 
 			readyCh := m.newLockerReadyCh()
@@ -69,8 +69,8 @@ func (m *Manager) handleDBusSignal(sig *dbus.Signal) {
 		} else {
 			m.inSleepCycle.Store(false)
 			m.signalLockerReady()
-			_ = m.refreshSessionBinding()
-			_ = m.acquireSleepInhibitor()
+			m.refreshSessionBinding()
+			m.acquireSleepInhibitor()
 		}
 
 		m.stateMutex.Lock()
@@ -87,9 +87,9 @@ func (m *Manager) handleDBusSignal(sig *dbus.Signal) {
 			oldOwner, _ := sig.Body[1].(string)
 			newOwner, _ := sig.Body[2].(string)
 			if name == dbusDest && oldOwner != "" && newOwner != "" {
-				_ = m.updateSessionState()
+				m.updateSessionState()
 				if !m.inSleepCycle.Load() {
-					_ = m.acquireSleepInhibitor()
+					m.acquireSleepInhibitor()
 				}
 				m.notifySubscribers()
 			}

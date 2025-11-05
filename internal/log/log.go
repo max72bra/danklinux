@@ -16,7 +16,7 @@ type Logger struct{ *cblog.Logger }
 func (l *Logger) Printf(format string, v ...interface{}) { l.Infof(format, v...) }
 
 // Fatalf keeps goose’s contract of exiting the program.
-func (l *Logger) Fatalf(format string, v ...interface{}) { l.Fatalf(format, v...) }
+func (l *Logger) Fatalf(format string, v ...interface{}) { l.Logger.Fatalf(format, v...) }
 
 var (
 	logger     *Logger

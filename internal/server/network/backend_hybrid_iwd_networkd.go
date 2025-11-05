@@ -119,7 +119,7 @@ func (b *HybridIwdNetworkdBackend) ConnectWiFi(req ConnectionRequest) error {
 
 	ws, err := b.wifi.GetCurrentState()
 	if err == nil && ws.WiFiDevice != "" {
-		_ = b.l3.EnsureDhcpUp(ws.WiFiDevice)
+		b.l3.EnsureDhcpUp(ws.WiFiDevice)
 	}
 
 	return nil

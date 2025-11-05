@@ -40,6 +40,7 @@ func NewManager() (*Manager, error) {
 		pairingSubMutex:    sync.RWMutex{},
 		dirty:              make(chan struct{}, 1),
 		pendingPairings:    make(map[string]bool),
+		eventQueue:         make(chan func(), 32),
 	}
 
 	broker := NewSubscriptionBroker(m.broadcastPairingPrompt)
@@ -69,6 +70,9 @@ func NewManager() (*Manager, error) {
 
 	m.notifierWg.Add(1)
 	go m.notifier()
+
+	m.eventWg.Add(1)
+	go m.eventWorker()
 
 	return m, nil
 }
@@ -364,74 +368,94 @@ func (m *Manager) handleDevicePropertiesChanged(path dbus.ObjectPath, changed ma
 			m.pendingPairingsMux.Unlock()
 
 			if wasPending {
-				go func() {
+				select {
+				case m.eventQueue <- func() {
 					time.Sleep(300 * time.Millisecond)
 					log.Infof("[Bluetooth] Auto-connecting newly paired device: %s", devicePath)
 					if err := m.ConnectDevice(devicePath); err != nil {
 						log.Warnf("[Bluetooth] Auto-connect failed: %v", err)
 					}
-				}()
+				}:
+				default:
+				}
 			}
 		}
 	}
 
 	if hasPaired || hasConnected || hasTrusted {
-		go func() {
+		select {
+		case m.eventQueue <- func() {
 			time.Sleep(100 * time.Millisecond)
 			m.updateDevices()
 			m.notifySubscribers()
-		}()
+		}:
+		default:
+		}
+	}
+}
+
+func (m *Manager) eventWorker() {
+	defer m.eventWg.Done()
+	for {
+		select {
+		case <-m.stopChan:
+			return
+		case event := <-m.eventQueue:
+			event()
+		}
 	}
 }
 
 func (m *Manager) notifier() {
 	defer m.notifierWg.Done()
 	const minGap = 200 * time.Millisecond
-	var timer *time.Timer
+	timer := time.NewTimer(minGap)
+	timer.Stop()
 	var pending bool
 
 	for {
 		select {
 		case <-m.stopChan:
+			timer.Stop()
 			return
 		case <-m.dirty:
 			if pending {
 				continue
 			}
 			pending = true
-			if timer != nil {
-				timer.Stop()
+			timer.Reset(minGap)
+		case <-timer.C:
+			if !pending {
+				continue
 			}
-			timer = time.AfterFunc(minGap, func() {
-				m.updateDevices()
+			m.updateDevices()
 
-				m.subMutex.RLock()
-				if len(m.subscribers) == 0 {
-					m.subMutex.RUnlock()
-					pending = false
-					return
-				}
-
-				currentState := m.snapshotState()
-
-				if m.lastNotifiedState != nil && !stateChanged(m.lastNotifiedState, &currentState) {
-					m.subMutex.RUnlock()
-					pending = false
-					return
-				}
-
-				for _, ch := range m.subscribers {
-					select {
-					case ch <- currentState:
-					default:
-					}
-				}
+			m.subMutex.RLock()
+			if len(m.subscribers) == 0 {
 				m.subMutex.RUnlock()
-
-				stateCopy := currentState
-				m.lastNotifiedState = &stateCopy
 				pending = false
-			})
+				continue
+			}
+
+			currentState := m.snapshotState()
+
+			if m.lastNotifiedState != nil && !stateChanged(m.lastNotifiedState, &currentState) {
+				m.subMutex.RUnlock()
+				pending = false
+				continue
+			}
+
+			for _, ch := range m.subscribers {
+				select {
+				case ch <- currentState:
+				default:
+				}
+			}
+			m.subMutex.RUnlock()
+
+			stateCopy := currentState
+			m.lastNotifiedState = &stateCopy
+			pending = false
 		}
 	}
 }
@@ -581,6 +605,7 @@ func (m *Manager) TrustDevice(devicePath string, trusted bool) error {
 func (m *Manager) Close() {
 	close(m.stopChan)
 	m.notifierWg.Wait()
+	m.eventWg.Wait()
 
 	m.sigWG.Wait()
 

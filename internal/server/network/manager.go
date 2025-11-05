@@ -317,48 +317,50 @@ func (m *Manager) broadcastCredentialPrompt(prompt CredentialPrompt) {
 func (m *Manager) notifier() {
 	defer m.notifierWg.Done()
 	const minGap = 100 * time.Millisecond
-	var timer *time.Timer
+	timer := time.NewTimer(minGap)
+	timer.Stop()
 	var pending bool
 	for {
 		select {
 		case <-m.stopChan:
+			timer.Stop()
 			return
 		case <-m.dirty:
 			if pending {
 				continue
 			}
 			pending = true
-			if timer != nil {
-				timer.Stop()
+			timer.Reset(minGap)
+		case <-timer.C:
+			if !pending {
+				continue
 			}
-			timer = time.AfterFunc(minGap, func() {
-				m.subMutex.RLock()
-				if len(m.subscribers) == 0 {
-					m.subMutex.RUnlock()
-					pending = false
-					return
-				}
-
-				currentState := m.snapshotState()
-
-				if m.lastNotifiedState != nil && !stateChangedMeaningfully(m.lastNotifiedState, &currentState) {
-					m.subMutex.RUnlock()
-					pending = false
-					return
-				}
-
-				for _, ch := range m.subscribers {
-					select {
-					case ch <- currentState:
-					default:
-					}
-				}
+			m.subMutex.RLock()
+			if len(m.subscribers) == 0 {
 				m.subMutex.RUnlock()
-
-				stateCopy := currentState
-				m.lastNotifiedState = &stateCopy
 				pending = false
-			})
+				continue
+			}
+
+			currentState := m.snapshotState()
+
+			if m.lastNotifiedState != nil && !stateChangedMeaningfully(m.lastNotifiedState, &currentState) {
+				m.subMutex.RUnlock()
+				pending = false
+				continue
+			}
+
+			for _, ch := range m.subscribers {
+				select {
+				case ch <- currentState:
+				default:
+				}
+			}
+			m.subMutex.RUnlock()
+
+			stateCopy := currentState
+			m.lastNotifiedState = &stateCopy
+			pending = false
 		}
 	}
 }

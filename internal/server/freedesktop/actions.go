@@ -19,7 +19,7 @@ func (m *Manager) SetIconFile(iconPath string) error {
 		return fmt.Errorf("failed to set icon file: %w", err)
 	}
 
-	_ = m.updateAccountsState()
+	m.updateAccountsState()
 	return nil
 }
 
@@ -33,7 +33,7 @@ func (m *Manager) SetRealName(name string) error {
 		return fmt.Errorf("failed to set real name: %w", err)
 	}
 
-	_ = m.updateAccountsState()
+	m.updateAccountsState()
 	return nil
 }
 
@@ -47,7 +47,7 @@ func (m *Manager) SetEmail(email string) error {
 		return fmt.Errorf("failed to set email: %w", err)
 	}
 
-	_ = m.updateAccountsState()
+	m.updateAccountsState()
 	return nil
 }
 
@@ -61,7 +61,7 @@ func (m *Manager) SetLanguage(language string) error {
 		return fmt.Errorf("failed to set language: %w", err)
 	}
 
-	_ = m.updateAccountsState()
+	m.updateAccountsState()
 	return nil
 }
 
@@ -75,7 +75,7 @@ func (m *Manager) SetLocation(location string) error {
 		return fmt.Errorf("failed to set location: %w", err)
 	}
 
-	_ = m.updateAccountsState()
+	m.updateAccountsState()
 	return nil
 }
 

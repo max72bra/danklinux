@@ -108,7 +108,7 @@ func (a *BluezAgent) Close() {
 		return
 	}
 	mgr := a.conn.Object(bluezService, dbus.ObjectPath(agentManagerPath))
-	_ = mgr.Call(agentManagerIface+".UnregisterAgent", 0, dbus.ObjectPath(agentPath)).Err
+	mgr.Call(agentManagerIface+".UnregisterAgent", 0, dbus.ObjectPath(agentPath))
 	a.conn.Close()
 }
 
