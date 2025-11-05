@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/AvengeMedia/danklinux/internal/log"
 	"github.com/AvengeMedia/danklinux/internal/server/bluez"
@@ -934,10 +935,25 @@ func Start(printDocs bool) error {
 	log.Info("")
 
 	go func() {
+		ticker := time.NewTicker(30 * time.Second)
+		defer ticker.Stop()
+
 		if err := InitializeNetworkManager(); err != nil {
 			log.Warnf("Network manager unavailable: %v", err)
 		} else {
 			notifyCapabilityChange()
+			return
+		}
+
+		for range ticker.C {
+			if networkManager != nil {
+				return
+			}
+			if err := InitializeNetworkManager(); err == nil {
+				log.Info("Network manager initialized")
+				notifyCapabilityChange()
+				return
+			}
 		}
 	}()
 
