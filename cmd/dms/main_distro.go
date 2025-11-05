@@ -17,11 +17,15 @@ func init() {
 	runCmd.Flags().Bool("session", false, "Session managed (like as a systemd unit)")
 	runCmd.Flags().MarkHidden("daemon-child")
 
+	// Add subcommands to greeter
+	greeterCmd.AddCommand(greeterSyncCmd, greeterStatusCmd)
+
 	// Add subcommands to plugins
 	pluginsCmd.AddCommand(pluginsBrowseCmd, pluginsListCmd, pluginsInstallCmd, pluginsUninstallCmd)
 
-	// Add common commands to root (excluding updateCmd and greeterCmd for distro builds)
+	// Add common commands to root
 	rootCmd.AddCommand(getCommonCommands()...)
+
 	rootCmd.SetHelpTemplate(getHelpTemplate())
 }
 

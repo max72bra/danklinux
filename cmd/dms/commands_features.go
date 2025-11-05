@@ -37,45 +37,6 @@ var updateCheckCmd = &cobra.Command{
 	},
 }
 
-var greeterCmd = &cobra.Command{
-	Use:   "greeter",
-	Short: "Manage DMS greeter installation",
-	Long:  "Manage DMS greeter (greetd) installation and configuration",
-}
-
-var greeterInstallCmd = &cobra.Command{
-	Use:   "install",
-	Short: "Install and configure DMS greeter",
-	Long:  "Install greetd and configure it to use DMS as the greeter interface",
-	Run: func(cmd *cobra.Command, args []string) {
-		if err := installGreeter(); err != nil {
-			log.Fatalf("Error installing greeter: %v", err)
-		}
-	},
-}
-
-var greeterSyncCmd = &cobra.Command{
-	Use:   "sync",
-	Short: "Sync DMS theme and settings with greeter",
-	Long:  "Synchronize your DMS theme, settings, and wallpaper configuration with the login greeter screen",
-	Run: func(cmd *cobra.Command, args []string) {
-		if err := syncGreeter(); err != nil {
-			log.Fatalf("Error syncing greeter: %v", err)
-		}
-	},
-}
-
-var greeterStatusCmd = &cobra.Command{
-	Use:   "status",
-	Short: "Check greeter sync status",
-	Long:  "Check the status of greeter installation and configuration sync",
-	Run: func(cmd *cobra.Command, args []string) {
-		if err := checkGreeterStatus(); err != nil {
-			log.Fatalf("Error checking greeter status: %v", err)
-		}
-	},
-}
-
 func runUpdateCheck() {
 	fmt.Println("Checking for DankMaterialShell updates...")
 	fmt.Println()

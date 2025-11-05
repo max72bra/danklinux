@@ -365,5 +365,6 @@ func getCommonCommands() []*cobra.Command {
 		dank16Cmd,
 		brightnessCmd,
 		hyprlandCmd,
+		greeterCmd,
 	}
 }

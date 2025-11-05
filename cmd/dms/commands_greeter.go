@@ -1,5 +1,3 @@
-//go:build !distro_binary
-
 package main
 
 import (
@@ -11,7 +9,48 @@ import (
 	"strings"
 
 	"github.com/AvengeMedia/danklinux/internal/greeter"
+	"github.com/AvengeMedia/danklinux/internal/log"
+	"github.com/spf13/cobra"
 )
+
+var greeterCmd = &cobra.Command{
+	Use:   "greeter",
+	Short: "Manage DMS greeter",
+	Long:  "Manage DMS greeter (greetd)",
+}
+
+var greeterInstallCmd = &cobra.Command{
+	Use:   "install",
+	Short: "Install and configure DMS greeter",
+	Long:  "Install greetd and configure it to use DMS as the greeter interface",
+	Run: func(cmd *cobra.Command, args []string) {
+		if err := installGreeter(); err != nil {
+			log.Fatalf("Error installing greeter: %v", err)
+		}
+	},
+}
+
+var greeterSyncCmd = &cobra.Command{
+	Use:   "sync",
+	Short: "Sync DMS theme and settings with greeter",
+	Long:  "Synchronize your current user's DMS theme, settings, and wallpaper configuration with the login greeter screen",
+	Run: func(cmd *cobra.Command, args []string) {
+		if err := syncGreeter(); err != nil {
+			log.Fatalf("Error syncing greeter: %v", err)
+		}
+	},
+}
+
+var greeterStatusCmd = &cobra.Command{
+	Use:   "status",
+	Short: "Check greeter sync status",
+	Long:  "Check the status of greeter installation and configuration sync",
+	Run: func(cmd *cobra.Command, args []string) {
+		if err := checkGreeterStatus(); err != nil {
+			log.Fatalf("Error checking greeter status: %v", err)
+		}
+	},
+}
 
 func installGreeter() error {
 	fmt.Println("=== DMS Greeter Installation ===")
@@ -20,12 +59,10 @@ func installGreeter() error {
 		fmt.Println(msg)
 	}
 
-	// Step 1: Ensure greetd is installed
 	if err := greeter.EnsureGreetdInstalled(logFunc, ""); err != nil {
 		return err
 	}
 
-	// Step 2: Detect DMS path
 	fmt.Println("\nDetecting DMS installation...")
 	dmsPath, err := greeter.DetectDMSPath()
 	if err != nil {
@@ -33,7 +70,6 @@ func installGreeter() error {
 	}
 	fmt.Printf("✓ Found DMS at: %s\n", dmsPath)
 
-	// Step 3: Detect compositors
 	fmt.Println("\nDetecting installed compositors...")
 	compositors := greeter.DetectCompositors()
 	if len(compositors) == 0 {
@@ -53,25 +89,21 @@ func installGreeter() error {
 		fmt.Printf("✓ Selected compositor: %s\n", selectedCompositor)
 	}
 
-	// Step 4: Setup dms-greeter group and permissions
 	fmt.Println("\nSetting up dms-greeter group and permissions...")
 	if err := greeter.SetupDMSGroup(logFunc, ""); err != nil {
 		return err
 	}
 
-	// Step 5: Copy greeter files
 	fmt.Println("\nCopying greeter files...")
 	if err := greeter.CopyGreeterFiles(dmsPath, selectedCompositor, logFunc, ""); err != nil {
 		return err
 	}
 
-	// Step 6: Configure greetd
 	fmt.Println("\nConfiguring greetd...")
 	if err := greeter.ConfigureGreetd(dmsPath, selectedCompositor, logFunc, ""); err != nil {
 		return err
 	}
 
-	// Step 7: Sync DMS configs
 	fmt.Println("\nSynchronizing DMS configurations...")
 	if err := greeter.SyncDMSConfigs(dmsPath, logFunc, ""); err != nil {
 		return err
@@ -94,7 +126,6 @@ func syncGreeter() error {
 		fmt.Println(msg)
 	}
 
-	// Detect DMS path
 	fmt.Println("Detecting DMS installation...")
 	dmsPath, err := greeter.DetectDMSPath()
 	if err != nil {
@@ -102,13 +133,47 @@ func syncGreeter() error {
 	}
 	fmt.Printf("✓ Found DMS at: %s\n", dmsPath)
 
-	// Check if greeter cache directory exists
 	cacheDir := "/var/cache/dms-greeter"
 	if _, err := os.Stat(cacheDir); os.IsNotExist(err) {
-		return fmt.Errorf("greeter cache directory not found at %s\nPlease run 'dms greeter install' first", cacheDir)
+		return fmt.Errorf("greeter cache directory not found at %s\nPlease install the greeter first", cacheDir)
 	}
 
-	// Sync DMS configs
+	greeterGroupExists := checkGroupExists("greeter")
+	if greeterGroupExists {
+		currentUser, err := user.Current()
+		if err != nil {
+			return fmt.Errorf("failed to get current user: %w", err)
+		}
+
+		groupsCmd := exec.Command("groups", currentUser.Username)
+		groupsOutput, err := groupsCmd.Output()
+		if err != nil {
+			return fmt.Errorf("failed to check groups: %w", err)
+		}
+
+		inGreeterGroup := strings.Contains(string(groupsOutput), "greeter")
+		if !inGreeterGroup {
+			fmt.Println("\n⚠ Warning: You are not in the greeter group.")
+			fmt.Print("Would you like to add your user to the greeter group? (y/N): ")
+
+			var response string
+			fmt.Scanln(&response)
+			response = strings.ToLower(strings.TrimSpace(response))
+
+			if response == "y" || response == "yes" {
+				fmt.Println("\nAdding user to greeter group...")
+				addUserCmd := exec.Command("sudo", "usermod", "-aG", "greeter", currentUser.Username)
+				addUserCmd.Stdout = os.Stdout
+				addUserCmd.Stderr = os.Stderr
+				if err := addUserCmd.Run(); err != nil {
+					return fmt.Errorf("failed to add user to greeter group: %w", err)
+				}
+				fmt.Println("✓ User added to greeter group")
+				fmt.Println("⚠ You will need to log out and back in for the group change to take effect")
+			}
+		}
+	}
+
 	fmt.Println("\nSynchronizing DMS configurations...")
 	if err := greeter.SyncDMSConfigs(dmsPath, logFunc, ""); err != nil {
 		return err
@@ -119,6 +184,21 @@ func syncGreeter() error {
 	fmt.Println("The changes will be visible on the next login screen.")
 
 	return nil
+}
+
+func checkGroupExists(groupName string) bool {
+	data, err := os.ReadFile("/etc/group")
+	if err != nil {
+		return false
+	}
+
+	lines := strings.Split(string(data), "\n")
+	for _, line := range lines {
+		if strings.HasPrefix(line, groupName+":") {
+			return true
+		}
+	}
+	return false
 }
 
 func checkGreeterStatus() error {
@@ -135,7 +215,6 @@ func checkGreeterStatus() error {
 		return fmt.Errorf("failed to get current user: %w", err)
 	}
 
-	// Check if user is in greeter group
 	fmt.Println("Group Membership:")
 	groupsCmd := exec.Command("groups", currentUser.Username)
 	groupsOutput, err := groupsCmd.Output()
@@ -151,7 +230,6 @@ func checkGreeterStatus() error {
 		fmt.Println("    Run 'dms greeter install' to add user to greeter group")
 	}
 
-	// Check if greeter cache directory exists
 	cacheDir := "/var/cache/dms-greeter"
 	fmt.Println("\nGreeter Cache Directory:")
 	if stat, err := os.Stat(cacheDir); err == nil && stat.IsDir() {
@@ -162,7 +240,6 @@ func checkGreeterStatus() error {
 		return nil
 	}
 
-	// Check symlinks
 	fmt.Println("\nConfiguration Symlinks:")
 	symlinks := []struct {
 		source string
@@ -188,7 +265,6 @@ func checkGreeterStatus() error {
 
 	allGood := true
 	for _, link := range symlinks {
-		// Check if target symlink exists
 		targetInfo, err := os.Lstat(link.target)
 		if err != nil {
 			fmt.Printf("  ✗ %s: symlink not found at %s\n", link.desc, link.target)
@@ -196,14 +272,12 @@ func checkGreeterStatus() error {
 			continue
 		}
 
-		// Check if it's a symlink
 		if targetInfo.Mode()&os.ModeSymlink == 0 {
 			fmt.Printf("  ✗ %s: %s is not a symlink\n", link.desc, link.target)
 			allGood = false
 			continue
 		}
 
-		// Check if symlink points to correct source
 		linkDest, err := os.Readlink(link.target)
 		if err != nil {
 			fmt.Printf("  ✗ %s: failed to read symlink\n", link.desc)
@@ -219,7 +293,6 @@ func checkGreeterStatus() error {
 			continue
 		}
 
-		// Check if source file exists
 		if _, err := os.Stat(link.source); os.IsNotExist(err) {
 			fmt.Printf("  ⚠ %s: symlink OK, but source file doesn't exist yet\n", link.desc)
 			fmt.Printf("    Will be created when you run DMS\n")
@@ -232,8 +305,6 @@ func checkGreeterStatus() error {
 	fmt.Println()
 	if allGood && inGreeterGroup {
 		fmt.Println("✓ All checks passed! Greeter is properly configured.")
-		fmt.Println("\nTo re-sync after theme changes, run:")
-		fmt.Println("  dms greeter sync")
 	} else if !allGood {
 		fmt.Println("⚠ Some issues detected. Run 'dms greeter sync' to fix symlinks.")
 	}

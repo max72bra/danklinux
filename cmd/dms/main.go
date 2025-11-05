@@ -28,9 +28,6 @@ func init() {
 	// Add common commands to root
 	rootCmd.AddCommand(getCommonCommands()...)
 
-	// Add non-distro specific commands
-	rootCmd.AddCommand(updateCmd, greeterCmd)
-
 	rootCmd.SetHelpTemplate(getHelpTemplate())
 }
 
