@@ -195,6 +195,14 @@ func runShellInteractive(session bool) {
 	if qtRules := log.GetQtLoggingRules(); qtRules != "" {
 		cmd.Env = append(cmd.Env, "QT_LOGGING_RULES="+qtRules)
 	}
+
+	homeDir, err := os.UserHomeDir()
+	if err == nil && os.Getenv("DMS_DISABLE_HOT_RELOAD") == "" {
+		if !strings.HasPrefix(configPath, homeDir) {
+			cmd.Env = append(cmd.Env, "DMS_DISABLE_HOT_RELOAD=1")
+		}
+	}
+
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -396,6 +404,13 @@ func runShellDaemon(session bool) {
 	cmd.Env = append(os.Environ(), "DMS_SOCKET="+socketPath)
 	if qtRules := log.GetQtLoggingRules(); qtRules != "" {
 		cmd.Env = append(cmd.Env, "QT_LOGGING_RULES="+qtRules)
+	}
+
+	homeDir, err := os.UserHomeDir()
+	if err == nil && os.Getenv("DMS_DISABLE_HOT_RELOAD") == "" {
+		if !strings.HasPrefix(configPath, homeDir) {
+			cmd.Env = append(cmd.Env, "DMS_DISABLE_HOT_RELOAD=1")
+		}
 	}
 
 	devNull, err := os.OpenFile("/dev/null", os.O_RDWR, 0)
