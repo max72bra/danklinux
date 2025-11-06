@@ -225,8 +225,10 @@ func runShellInteractive(session bool) {
 		case sig := <-sigChan:
 			// Handle SIGHUP restart for non-session managed processes
 			if sig == syscall.SIGHUP && !isSessionManaged {
+				log.Infof("Received SIGHUP, spawning detached restart process...")
 				execDetachedRestart(os.Getpid())
-				continue // Wait for SIGTERM from detached restart
+				// Exit immediately to avoid race conditions with detached restart
+				return
 			}
 
 			// All other signals: clean shutdown
@@ -432,8 +434,10 @@ func runShellDaemon(session bool) {
 		case sig := <-sigChan:
 			// Handle SIGHUP restart for non-session managed processes
 			if sig == syscall.SIGHUP && !isSessionManaged {
+				log.Infof("Received SIGHUP, spawning detached restart process...")
 				execDetachedRestart(os.Getpid())
-				continue // Wait for SIGTERM from detached restart
+				// Exit immediately to avoid race conditions with detached restart
+				return
 			}
 
 			// All other signals: clean shutdown
