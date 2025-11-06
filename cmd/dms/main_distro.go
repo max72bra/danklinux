@@ -18,7 +18,7 @@ func init() {
 	runCmd.Flags().MarkHidden("daemon-child")
 
 	// Add subcommands to greeter
-	greeterCmd.AddCommand(greeterSyncCmd, greeterStatusCmd)
+	greeterCmd.AddCommand(greeterSyncCmd, greeterEnableCmd, greeterStatusCmd)
 
 	// Add subcommands to plugins
 	pluginsCmd.AddCommand(pluginsBrowseCmd, pluginsListCmd, pluginsInstallCmd, pluginsUninstallCmd)

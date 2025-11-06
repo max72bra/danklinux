@@ -17,7 +17,7 @@ func init() {
 	runCmd.Flags().MarkHidden("daemon-child")
 
 	// Add subcommands to greeter
-	greeterCmd.AddCommand(greeterInstallCmd, greeterSyncCmd, greeterStatusCmd)
+	greeterCmd.AddCommand(greeterInstallCmd, greeterSyncCmd, greeterEnableCmd, greeterStatusCmd)
 
 	// Add subcommands to update
 	updateCmd.AddCommand(updateCheckCmd)

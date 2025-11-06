@@ -41,6 +41,17 @@ var greeterSyncCmd = &cobra.Command{
 	},
 }
 
+var greeterEnableCmd = &cobra.Command{
+	Use:   "enable",
+	Short: "Enable DMS greeter in greetd config",
+	Long:  "Configure greetd to use DMS as the greeter",
+	Run: func(cmd *cobra.Command, args []string) {
+		if err := enableGreeter(); err != nil {
+			log.Fatalf("Error enabling greeter: %v", err)
+		}
+	},
+}
+
 var greeterStatusCmd = &cobra.Command{
 	Use:   "status",
 	Short: "Check greeter sync status",
@@ -206,6 +217,141 @@ func checkGroupExists(groupName string) bool {
 	return false
 }
 
+func enableGreeter() error {
+	fmt.Println("=== DMS Greeter Enable ===")
+	fmt.Println()
+
+	configPath := "/etc/greetd/config.toml"
+	if _, err := os.Stat(configPath); os.IsNotExist(err) {
+		return fmt.Errorf("greetd config not found at %s\nPlease install greetd first", configPath)
+	}
+
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return fmt.Errorf("failed to read greetd config: %w", err)
+	}
+
+	configContent := string(data)
+	if strings.Contains(configContent, "dms-greeter") {
+		fmt.Println("✓ Greeter is already configured with dms-greeter")
+		return nil
+	}
+
+	fmt.Println("Detecting installed compositors...")
+	compositors := greeter.DetectCompositors()
+
+	if commandExists("sway") {
+		compositors = append(compositors, "sway")
+	}
+
+	if len(compositors) == 0 {
+		return fmt.Errorf("no supported compositors found (niri, Hyprland, or sway required)")
+	}
+
+	var selectedCompositor string
+	if len(compositors) == 1 {
+		selectedCompositor = compositors[0]
+		fmt.Printf("✓ Found compositor: %s\n", selectedCompositor)
+	} else {
+		var err error
+		selectedCompositor, err = promptCompositorChoice(compositors)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("✓ Selected compositor: %s\n", selectedCompositor)
+	}
+
+	backupPath := configPath + ".backup"
+	backupCmd := exec.Command("sudo", "cp", configPath, backupPath)
+	if err := backupCmd.Run(); err != nil {
+		return fmt.Errorf("failed to backup config: %w", err)
+	}
+	fmt.Printf("✓ Backed up config to %s\n", backupPath)
+
+	lines := strings.Split(configContent, "\n")
+	var newLines []string
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if !strings.HasPrefix(trimmed, "command =") && !strings.HasPrefix(trimmed, "command=") {
+			newLines = append(newLines, line)
+		}
+	}
+
+	wrapperCmd := "dms-greeter"
+	if !commandExists("dms-greeter") {
+		wrapperCmd = "/usr/local/bin/dms-greeter"
+	}
+
+	compositorLower := strings.ToLower(selectedCompositor)
+	commandLine := fmt.Sprintf(`command = "%s --command %s"`, wrapperCmd, compositorLower)
+
+	var finalLines []string
+	inDefaultSession := false
+	commandAdded := false
+
+	for _, line := range newLines {
+		finalLines = append(finalLines, line)
+		trimmed := strings.TrimSpace(line)
+
+		if trimmed == "[default_session]" {
+			inDefaultSession = true
+		}
+
+		if inDefaultSession && !commandAdded {
+			if strings.HasPrefix(trimmed, "user =") || strings.HasPrefix(trimmed, "user=") {
+				finalLines = append(finalLines, commandLine)
+				commandAdded = true
+			}
+		}
+	}
+
+	if !commandAdded {
+		finalLines = append(finalLines, commandLine)
+	}
+
+	newConfig := strings.Join(finalLines, "\n")
+
+	tmpFile := "/tmp/greetd-config.toml"
+	if err := os.WriteFile(tmpFile, []byte(newConfig), 0644); err != nil {
+		return fmt.Errorf("failed to write temp config: %w", err)
+	}
+
+	moveCmd := exec.Command("sudo", "mv", tmpFile, configPath)
+	if err := moveCmd.Run(); err != nil {
+		return fmt.Errorf("failed to update config: %w", err)
+	}
+
+	fmt.Printf("✓ Updated greetd configuration to use %s\n", selectedCompositor)
+	fmt.Println("\n=== Enable Complete ===")
+	fmt.Println("\nTo start the greeter, run:")
+	fmt.Println("  sudo systemctl start greetd")
+	fmt.Println("\nTo enable on boot, run:")
+	fmt.Println("  sudo systemctl enable --now greetd")
+
+	return nil
+}
+
+func promptCompositorChoice(compositors []string) (string, error) {
+	fmt.Println("\nMultiple compositors detected:")
+	for i, comp := range compositors {
+		fmt.Printf("%d) %s\n", i+1, comp)
+	}
+
+	var response string
+	fmt.Print("Choose compositor for greeter: ")
+	fmt.Scanln(&response)
+	response = strings.TrimSpace(response)
+
+	choice := 0
+	fmt.Sscanf(response, "%d", &choice)
+
+	if choice < 1 || choice > len(compositors) {
+		return "", fmt.Errorf("invalid choice")
+	}
+
+	return compositors[choice-1], nil
+}
+
 func checkGreeterStatus() error {
 	fmt.Println("=== DMS Greeter Status ===")
 	fmt.Println()
@@ -220,7 +366,43 @@ func checkGreeterStatus() error {
 		return fmt.Errorf("failed to get current user: %w", err)
 	}
 
-	fmt.Println("Group Membership:")
+	configPath := "/etc/greetd/config.toml"
+	fmt.Println("Greeter Configuration:")
+	if data, err := os.ReadFile(configPath); err == nil {
+		configContent := string(data)
+		if strings.Contains(configContent, "dms-greeter") {
+			lines := strings.Split(configContent, "\n")
+			for _, line := range lines {
+				trimmed := strings.TrimSpace(line)
+				if strings.HasPrefix(trimmed, "command =") || strings.HasPrefix(trimmed, "command=") {
+					parts := strings.SplitN(trimmed, "=", 2)
+					if len(parts) == 2 {
+						command := strings.Trim(strings.TrimSpace(parts[1]), `"`)
+						fmt.Println("  ✓ Greeter is enabled")
+
+						if strings.Contains(command, "--command niri") {
+							fmt.Println("  Compositor: niri")
+						} else if strings.Contains(command, "--command hyprland") {
+							fmt.Println("  Compositor: Hyprland")
+						} else if strings.Contains(command, "--command sway") {
+							fmt.Println("  Compositor: sway")
+						} else {
+							fmt.Println("  Compositor: unknown")
+						}
+					}
+					break
+				}
+			}
+		} else {
+			fmt.Println("  ✗ Greeter is NOT enabled")
+			fmt.Println("    Run 'dms greeter enable' to enable it")
+		}
+	} else {
+		fmt.Println("  ✗ Greeter config not found")
+		fmt.Println("    Run 'dms greeter install' to install greeter")
+	}
+
+	fmt.Println("\nGroup Membership:")
 	groupsCmd := exec.Command("groups", currentUser.Username)
 	groupsOutput, err := groupsCmd.Output()
 	if err != nil {

@@ -109,9 +109,9 @@ func updateArchLinux() error {
 	}
 
 	var packageName string
-	if isPackageInstalled("dms-shell-bin") {
+	if isArchPackageInstalled("dms-shell-bin") {
 		packageName = "dms-shell-bin"
-	} else if isPackageInstalled("dms-shell-git") {
+	} else if isArchPackageInstalled("dms-shell-git") {
 		packageName = "dms-shell-git"
 	} else {
 		fmt.Println("Info: Neither dms-shell-bin nor dms-shell-git package found.")
@@ -352,17 +352,6 @@ func offerReclone(dmsPath string) bool {
 
 	fmt.Printf("Successfully re-cloned repository (backup at %s)\n", backupPath)
 	return true
-}
-
-func commandExists(cmd string) bool {
-	_, err := exec.LookPath(cmd)
-	return err == nil
-}
-
-func isPackageInstalled(packageName string) bool {
-	cmd := exec.Command("pacman", "-Q", packageName)
-	err := cmd.Run()
-	return err == nil
 }
 
 func confirmUpdate() bool {
