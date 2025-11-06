@@ -225,7 +225,7 @@ func (a *ArchDistribution) getMatugenMapping(variant deps.PackageVariant) Packag
 	if variant == deps.VariantGit {
 		return PackageMapping{Name: "matugen-git", Repository: RepoTypeAUR}
 	}
-	return PackageMapping{Name: "matugen-bin", Repository: RepoTypeAUR}
+	return PackageMapping{Name: "matugen", Repository: RepoTypeSystem}
 }
 
 func (a *ArchDistribution) getDMSMapping(variant deps.PackageVariant) PackageMapping {
