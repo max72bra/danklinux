@@ -163,7 +163,7 @@ func TestManager_CancelJob(t *testing.T) {
 				client: mockClient,
 			}
 
-			err := m.CancelJob("printer1", 1)
+			err := m.CancelJob(1)
 			if tt.wantErr {
 				assert.Error(t, err)
 			} else {

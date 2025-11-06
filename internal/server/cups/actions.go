@@ -90,7 +90,7 @@ func (m *Manager) GetJobs(printerName string, whichJobs string) ([]Job, error) {
 	return jobs, nil
 }
 
-func (m *Manager) CancelJob(printerName string, jobID int) error {
+func (m *Manager) CancelJob(jobID int) error {
 	return m.client.CancelJob(jobID, false)
 }
 
