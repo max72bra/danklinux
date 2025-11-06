@@ -28,6 +28,8 @@ func init() {
 	// Add common commands to root
 	rootCmd.AddCommand(getCommonCommands()...)
 
+	rootCmd.AddCommand(updateCmd)
+
 	rootCmd.SetHelpTemplate(getHelpTemplate())
 }
 
