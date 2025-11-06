@@ -214,7 +214,7 @@ func (g *GentooDistribution) getPrerequisites() []string {
 	return []string{
 		"app-eselect/eselect-repository",
 		"dev-vcs/git",
-		"sys-devel/make",
+		"dev-build/make",
 		"app-arch/unzip",
 		"dev-util/pkgconf",
 	}
