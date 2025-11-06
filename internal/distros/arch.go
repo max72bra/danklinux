@@ -199,7 +199,7 @@ func (a *ArchDistribution) getQuickshellMapping(variant deps.PackageVariant) Pac
 	if forceQuickshellGit || variant == deps.VariantGit {
 		return PackageMapping{Name: "quickshell-git", Repository: RepoTypeAUR}
 	}
-	return PackageMapping{Name: "quickshell", Repository: RepoTypeAUR}
+	return PackageMapping{Name: "quickshell", Repository: RepoTypeSystem}
 }
 
 func (a *ArchDistribution) getHyprlandMapping(variant deps.PackageVariant) PackageMapping {
