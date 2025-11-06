@@ -213,8 +213,7 @@ func TestHandleCancelJob(t *testing.T) {
 		ID:     1,
 		Method: "cups.cancelJob",
 		Params: map[string]interface{}{
-			"printerName": "printer1",
-			"jobid":       float64(1),
+			"jobID": float64(1),
 		},
 	}
 

@@ -100,20 +100,14 @@ func handleResumePrinter(conn net.Conn, req Request, manager *Manager) {
 }
 
 func handleCancelJob(conn net.Conn, req Request, manager *Manager) {
-	printerName, ok := req.Params["printerName"].(string)
-	if !ok {
-		models.RespondError(conn, req.ID, "missing or invalid 'printerName' parameter")
-		return
-	}
-
-	jobIDFloat, ok := req.Params["jobid"].(float64)
+	jobIDFloat, ok := req.Params["jobID"].(float64)
 	if !ok {
 		models.RespondError(conn, req.ID, "missing or invalid 'jobid' parameter")
 		return
 	}
 	jobID := int(jobIDFloat)
 
-	if err := manager.CancelJob(printerName, jobID); err != nil {
+	if err := manager.CancelJob(jobID); err != nil {
 		models.RespondError(conn, req.ID, err.Error())
 		return
 	}
