@@ -104,6 +104,7 @@ func (a *ArchDistribution) DetectDependenciesWithTerminal(ctx context.Context, w
 	// Base detections (common across distros)
 	dependencies = append(dependencies, a.detectMatugen())
 	dependencies = append(dependencies, a.detectDgop())
+	dependencies = append(dependencies, a.detectHyprpicker())
 	dependencies = append(dependencies, a.detectClipboardTools()...)
 
 	return dependencies, nil
@@ -176,6 +177,7 @@ func (a *ArchDistribution) GetPackageMappingWithVariants(wm deps.WindowManager, 
 		"xdg-desktop-portal-gtk":  {Name: "xdg-desktop-portal-gtk", Repository: RepoTypeSystem},
 		"mate-polkit":             {Name: "mate-polkit", Repository: RepoTypeSystem},
 		"accountsservice":         {Name: "accountsservice", Repository: RepoTypeSystem},
+		"hyprpicker":              {Name: "hyprpicker", Repository: RepoTypeSystem},
 	}
 
 	switch wm {
@@ -184,7 +186,6 @@ func (a *ArchDistribution) GetPackageMappingWithVariants(wm deps.WindowManager, 
 		packages["grim"] = PackageMapping{Name: "grim", Repository: RepoTypeSystem}
 		packages["slurp"] = PackageMapping{Name: "slurp", Repository: RepoTypeSystem}
 		packages["hyprctl"] = a.getHyprlandMapping(variants["hyprland"])
-		packages["hyprpicker"] = PackageMapping{Name: "hyprpicker", Repository: RepoTypeSystem}
 		packages["grimblast"] = PackageMapping{Name: "grimblast", Repository: RepoTypeManual, BuildFunc: "installGrimblast"}
 		packages["jq"] = PackageMapping{Name: "jq", Repository: RepoTypeSystem}
 	case deps.WindowManagerNiri:

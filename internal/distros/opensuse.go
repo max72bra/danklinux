@@ -82,6 +82,7 @@ func (o *OpenSUSEDistribution) DetectDependenciesWithTerminal(ctx context.Contex
 	// Base detections (common across distros)
 	dependencies = append(dependencies, o.detectMatugen())
 	dependencies = append(dependencies, o.detectDgop())
+	dependencies = append(dependencies, o.detectHyprpicker())
 	dependencies = append(dependencies, o.detectClipboardTools()...)
 
 	return dependencies, nil
@@ -137,6 +138,7 @@ func (o *OpenSUSEDistribution) GetPackageMappingWithVariants(wm deps.WindowManag
 		"mate-polkit":            {Name: "mate-polkit", Repository: RepoTypeSystem},
 		"accountsservice":        {Name: "accountsservice", Repository: RepoTypeSystem},
 		"cliphist":               {Name: "cliphist", Repository: RepoTypeSystem},
+		"hyprpicker":             {Name: "hyprpicker", Repository: RepoTypeSystem},
 
 		// Manual builds
 		"dms (DankMaterialShell)": {Name: "dms", Repository: RepoTypeManual, BuildFunc: "installDankMaterialShell"},
@@ -151,7 +153,6 @@ func (o *OpenSUSEDistribution) GetPackageMappingWithVariants(wm deps.WindowManag
 		packages["grim"] = PackageMapping{Name: "grim", Repository: RepoTypeSystem}
 		packages["slurp"] = PackageMapping{Name: "slurp", Repository: RepoTypeSystem}
 		packages["hyprctl"] = PackageMapping{Name: "hyprland", Repository: RepoTypeSystem}
-		packages["hyprpicker"] = PackageMapping{Name: "hyprpicker", Repository: RepoTypeSystem}
 		packages["grimblast"] = PackageMapping{Name: "grimblast", Repository: RepoTypeManual, BuildFunc: "installGrimblast"}
 		packages["jq"] = PackageMapping{Name: "jq", Repository: RepoTypeSystem}
 	case deps.WindowManagerNiri:

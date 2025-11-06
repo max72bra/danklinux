@@ -82,6 +82,7 @@ func (u *UbuntuDistribution) DetectDependenciesWithTerminal(ctx context.Context,
 	// Base detections (common across distros)
 	dependencies = append(dependencies, u.detectMatugen())
 	dependencies = append(dependencies, u.detectDgop())
+	dependencies = append(dependencies, u.detectHyprpicker())
 	dependencies = append(dependencies, u.detectClipboardTools()...)
 
 	return dependencies, nil
@@ -159,6 +160,7 @@ func (u *UbuntuDistribution) GetPackageMapping(wm deps.WindowManager) map[string
 		"xdg-desktop-portal-gtk": {Name: "xdg-desktop-portal-gtk", Repository: RepoTypeSystem},
 		"mate-polkit":            {Name: "mate-polkit", Repository: RepoTypeSystem},
 		"accountsservice":        {Name: "accountsservice", Repository: RepoTypeSystem},
+		"hyprpicker":             {Name: "hyprpicker", Repository: RepoTypePPA, RepoURL: "ppa:cppiber/hyprland"},
 
 		// Manual builds (niri and quickshell likely not available in Ubuntu repos or PPAs)
 		"dms (DankMaterialShell)": {Name: "dms", Repository: RepoTypeManual, BuildFunc: "installDankMaterialShell"},
@@ -177,7 +179,6 @@ func (u *UbuntuDistribution) GetPackageMapping(wm deps.WindowManager) map[string
 		packages["grim"] = PackageMapping{Name: "grim", Repository: RepoTypeSystem}
 		packages["slurp"] = PackageMapping{Name: "slurp", Repository: RepoTypeSystem}
 		packages["hyprctl"] = PackageMapping{Name: "hyprland", Repository: RepoTypePPA, RepoURL: "ppa:cppiber/hyprland"}
-		packages["hyprpicker"] = PackageMapping{Name: "hyprpicker", Repository: RepoTypePPA, RepoURL: "ppa:cppiber/hyprland"}
 		packages["grimblast"] = PackageMapping{Name: "grimblast", Repository: RepoTypeManual, BuildFunc: "installGrimblast"}
 		packages["jq"] = PackageMapping{Name: "jq", Repository: RepoTypeSystem}
 	case deps.WindowManagerNiri:

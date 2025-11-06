@@ -78,6 +78,7 @@ func (n *NixOSDistribution) DetectDependenciesWithTerminal(ctx context.Context, 
 	// Base detections (common across distros)
 	dependencies = append(dependencies, n.detectMatugen())
 	dependencies = append(dependencies, n.detectDgop())
+	dependencies = append(dependencies, n.detectHyprpicker())
 	dependencies = append(dependencies, n.detectClipboardTools()...)
 
 	return dependencies, nil
@@ -262,6 +263,7 @@ func (n *NixOSDistribution) GetPackageMapping(wm deps.WindowManager) map[string]
 		"xdg-desktop-portal-gtk":  {Name: "nixpkgs#xdg-desktop-portal-gtk", Repository: RepoTypeSystem},
 		"mate-polkit":             {Name: "nixpkgs#mate.mate-polkit", Repository: RepoTypeSystem},
 		"accountsservice":         {Name: "nixpkgs#accountsservice", Repository: RepoTypeSystem},
+		"hyprpicker":              {Name: "nixpkgs#hyprpicker", Repository: RepoTypeSystem},
 	}
 
 	// Note: Window managers (hyprland/niri) should be installed system-wide on NixOS
@@ -271,7 +273,6 @@ func (n *NixOSDistribution) GetPackageMapping(wm deps.WindowManager) map[string]
 		// Skip hyprland itself - should be installed system-wide
 		packages["grim"] = PackageMapping{Name: "nixpkgs#grim", Repository: RepoTypeSystem}
 		packages["slurp"] = PackageMapping{Name: "nixpkgs#slurp", Repository: RepoTypeSystem}
-		packages["hyprpicker"] = PackageMapping{Name: "nixpkgs#hyprpicker", Repository: RepoTypeSystem}
 		packages["grimblast"] = PackageMapping{Name: "github:hyprwm/contrib#grimblast", Repository: RepoTypeFlake}
 		packages["jq"] = PackageMapping{Name: "nixpkgs#jq", Repository: RepoTypeSystem}
 	case deps.WindowManagerNiri:

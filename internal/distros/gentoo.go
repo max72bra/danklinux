@@ -74,6 +74,7 @@ func (g *GentooDistribution) DetectDependenciesWithTerminal(ctx context.Context,
 
 	dependencies = append(dependencies, g.detectMatugen())
 	dependencies = append(dependencies, g.detectDgop())
+	dependencies = append(dependencies, g.detectHyprpicker())
 	dependencies = append(dependencies, g.detectClipboardTools()...)
 
 	return dependencies, nil
@@ -155,6 +156,7 @@ func (g *GentooDistribution) GetPackageMappingWithVariants(wm deps.WindowManager
 		"xdg-desktop-portal-gtk": {Name: "sys-apps/xdg-desktop-portal-gtk", Repository: RepoTypeSystem},
 		"mate-polkit":            {Name: "mate-extra/mate-polkit", Repository: RepoTypeSystem},
 		"accountsservice":        {Name: "sys-apps/accountsservice", Repository: RepoTypeSystem},
+		"hyprpicker":             g.getHyprpickerMapping(variants["hyprland"]),
 
 		"quickshell":              g.getQuickshellMapping(variants["quickshell"]),
 		"matugen":                 {Name: "x11-misc/matugen", Repository: RepoTypeGURU},
@@ -169,7 +171,6 @@ func (g *GentooDistribution) GetPackageMappingWithVariants(wm deps.WindowManager
 		packages["grim"] = PackageMapping{Name: "gui-apps/grim", Repository: RepoTypeSystem}
 		packages["slurp"] = PackageMapping{Name: "gui-apps/slurp", Repository: RepoTypeSystem}
 		packages["hyprctl"] = g.getHyprlandMapping(variants["hyprland"])
-		packages["hyprpicker"] = g.getHyprpickerMapping(variants["hyprland"])
 		packages["grimblast"] = PackageMapping{Name: "grimblast", Repository: RepoTypeManual, BuildFunc: "installGrimblast"}
 		packages["jq"] = PackageMapping{Name: "app-misc/jq", Repository: RepoTypeSystem}
 	case deps.WindowManagerNiri:

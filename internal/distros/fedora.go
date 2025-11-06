@@ -90,6 +90,7 @@ func (f *FedoraDistribution) DetectDependenciesWithTerminal(ctx context.Context,
 	// Base detections (common across distros)
 	dependencies = append(dependencies, f.detectMatugen())
 	dependencies = append(dependencies, f.detectDgop())
+	dependencies = append(dependencies, f.detectHyprpicker())
 	dependencies = append(dependencies, f.detectClipboardTools()...)
 
 	return dependencies, nil
@@ -144,6 +145,7 @@ func (f *FedoraDistribution) GetPackageMappingWithVariants(wm deps.WindowManager
 		"xdg-desktop-portal-gtk": {Name: "xdg-desktop-portal-gtk", Repository: RepoTypeSystem},
 		"mate-polkit":            {Name: "mate-polkit", Repository: RepoTypeSystem},
 		"accountsservice":        {Name: "accountsservice", Repository: RepoTypeSystem},
+		"hyprpicker":             f.getHyprpickerMapping(variants["hyprland"]),
 
 		// COPR packages
 		"quickshell":              f.getQuickshellMapping(variants["quickshell"]),
@@ -159,7 +161,6 @@ func (f *FedoraDistribution) GetPackageMappingWithVariants(wm deps.WindowManager
 		packages["grim"] = PackageMapping{Name: "grim", Repository: RepoTypeSystem}
 		packages["slurp"] = PackageMapping{Name: "slurp", Repository: RepoTypeSystem}
 		packages["hyprctl"] = f.getHyprlandMapping(variants["hyprland"])
-		packages["hyprpicker"] = f.getHyprpickerMapping(variants["hyprland"])
 		packages["grimblast"] = PackageMapping{Name: "grimblast", Repository: RepoTypeManual, BuildFunc: "installGrimblast"}
 		packages["jq"] = PackageMapping{Name: "jq", Repository: RepoTypeSystem}
 	case deps.WindowManagerNiri:

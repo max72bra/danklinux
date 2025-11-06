@@ -70,6 +70,7 @@ func (d *DebianDistribution) DetectDependenciesWithTerminal(ctx context.Context,
 
 	dependencies = append(dependencies, d.detectMatugen())
 	dependencies = append(dependencies, d.detectDgop())
+	dependencies = append(dependencies, d.detectHyprpicker())
 	dependencies = append(dependencies, d.detectClipboardTools()...)
 
 	return dependencies, nil
@@ -154,6 +155,7 @@ func (d *DebianDistribution) GetPackageMapping(wm deps.WindowManager) map[string
 		"matugen":                 {Name: "matugen", Repository: RepoTypeManual, BuildFunc: "installMatugen"},
 		"dgop":                    {Name: "dgop", Repository: RepoTypeManual, BuildFunc: "installDgop"},
 		"cliphist":                {Name: "cliphist", Repository: RepoTypeManual, BuildFunc: "installCliphist"},
+		"hyprpicker":              {Name: "hyprpicker", Repository: RepoTypeManual, BuildFunc: "installHyprpicker"},
 	}
 
 	if wm == deps.WindowManagerNiri {
