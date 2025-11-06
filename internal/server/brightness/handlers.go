@@ -52,7 +52,13 @@ func handleSetBrightness(conn net.Conn, req Request, m *Manager) {
 		params.Exponential = exponential
 	}
 
-	if err := m.SetBrightnessWithMode(params.Device, params.Percent, params.Exponential); err != nil {
+	exponent := 1.2
+	if exponentFloat, ok := req.Params["exponent"].(float64); ok {
+		params.Exponent = exponentFloat
+		exponent = exponentFloat
+	}
+
+	if err := m.SetBrightnessWithExponent(params.Device, params.Percent, params.Exponential, exponent); err != nil {
 		models.RespondError(conn, req.ID.(int), err.Error())
 		return
 	}
@@ -78,7 +84,12 @@ func handleIncrement(conn net.Conn, req Request, m *Manager) {
 		exponential = expBool
 	}
 
-	if err := m.IncrementBrightnessWithMode(device, step, exponential); err != nil {
+	exponent := 1.2
+	if exponentFloat, ok := req.Params["exponent"].(float64); ok {
+		exponent = exponentFloat
+	}
+
+	if err := m.IncrementBrightnessWithExponent(device, step, exponential, exponent); err != nil {
 		models.RespondError(conn, req.ID.(int), err.Error())
 		return
 	}
@@ -104,7 +115,12 @@ func handleDecrement(conn net.Conn, req Request, m *Manager) {
 		exponential = expBool
 	}
 
-	if err := m.IncrementBrightnessWithMode(device, -step, exponential); err != nil {
+	exponent := 1.2
+	if exponentFloat, ok := req.Params["exponent"].(float64); ok {
+		exponent = exponentFloat
+	}
+
+	if err := m.IncrementBrightnessWithExponent(device, -step, exponential, exponent); err != nil {
 		models.RespondError(conn, req.ID.(int), err.Error())
 		return
 	}

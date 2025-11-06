@@ -175,6 +175,10 @@ func (m *Manager) SetBrightness(deviceID string, percent int) error {
 }
 
 func (m *Manager) SetBrightnessWithMode(deviceID string, percent int, exponential bool) error {
+	return m.SetBrightnessWithExponent(deviceID, percent, exponential, 1.2)
+}
+
+func (m *Manager) SetBrightnessWithExponent(deviceID string, percent int, exponential bool, exponent float64) error {
 	if percent < 0 || percent > 100 {
 		return fmt.Errorf("percent out of range: %d", percent)
 	}
@@ -213,16 +217,16 @@ func (m *Manager) SetBrightnessWithMode(deviceID string, percent int, exponentia
 	var err error
 	if deviceClass == ClassDDC {
 		log.Debugf("Calling DDC backend for %s", deviceID)
-		err = m.ddcBackend.SetBrightness(deviceID, percent, exponential, func() {
+		err = m.ddcBackend.SetBrightnessWithExponent(deviceID, percent, exponential, exponent, func() {
 			m.updateState()
 			m.debouncedBroadcast(deviceID)
 		})
 	} else if m.logindReady && m.logindBackend != nil {
 		log.Debugf("Calling logind backend for %s", deviceID)
-		err = m.setViaSysfsWithLogind(deviceID, percent, exponential)
+		err = m.setViaSysfsWithLogindWithExponent(deviceID, percent, exponential, exponent)
 	} else {
 		log.Debugf("Calling sysfs backend for %s", deviceID)
-		err = m.sysfsBackend.SetBrightness(deviceID, percent, exponential)
+		err = m.sysfsBackend.SetBrightnessWithExponent(deviceID, percent, exponential, exponent)
 	}
 
 	if err != nil {
@@ -242,6 +246,10 @@ func (m *Manager) IncrementBrightness(deviceID string, step int) error {
 }
 
 func (m *Manager) IncrementBrightnessWithMode(deviceID string, step int, exponential bool) error {
+	return m.IncrementBrightnessWithExponent(deviceID, step, exponential, 1.2)
+}
+
+func (m *Manager) IncrementBrightnessWithExponent(deviceID string, step int, exponential bool, exponent float64) error {
 	m.stateMutex.RLock()
 	currentState := m.state
 	m.stateMutex.RUnlock()
@@ -269,7 +277,7 @@ func (m *Manager) IncrementBrightnessWithMode(deviceID string, step int, exponen
 		newPercent = 0
 	}
 
-	return m.SetBrightnessWithMode(deviceID, newPercent, exponential)
+	return m.SetBrightnessWithExponent(deviceID, newPercent, exponential, exponent)
 }
 
 func (m *Manager) DecrementBrightness(deviceID string, step int) error {
@@ -277,6 +285,10 @@ func (m *Manager) DecrementBrightness(deviceID string, step int) error {
 }
 
 func (m *Manager) setViaSysfsWithLogind(deviceID string, percent int, exponential bool) error {
+	return m.setViaSysfsWithLogindWithExponent(deviceID, percent, exponential, 1.2)
+}
+
+func (m *Manager) setViaSysfsWithLogindWithExponent(deviceID string, percent int, exponential bool, exponent float64) error {
 	parts := strings.SplitN(deviceID, ":", 2)
 	if len(parts) != 2 {
 		return fmt.Errorf("invalid device id: %s", deviceID)
@@ -290,16 +302,16 @@ func (m *Manager) setViaSysfsWithLogind(deviceID string, percent int, exponentia
 		return err
 	}
 
-	value := m.sysfsBackend.PercentToValue(percent, dev, exponential)
+	value := m.sysfsBackend.PercentToValueWithExponent(percent, dev, exponential, exponent)
 
 	if m.logindBackend == nil {
-		return m.sysfsBackend.SetBrightness(deviceID, percent, exponential)
+		return m.sysfsBackend.SetBrightnessWithExponent(deviceID, percent, exponential, exponent)
 	}
 
 	err = m.logindBackend.SetBrightness(subsystem, name, uint32(value))
 	if err != nil {
 		log.Debugf("logind SetBrightness failed, falling back to direct sysfs: %v", err)
-		return m.sysfsBackend.SetBrightness(deviceID, percent, exponential)
+		return m.sysfsBackend.SetBrightnessWithExponent(deviceID, percent, exponential, exponent)
 	}
 
 	log.Debugf("set %s to %d%% (%d/%d) via logind", deviceID, percent, value, dev.maxBrightness)

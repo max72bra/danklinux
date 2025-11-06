@@ -168,6 +168,10 @@ func (b *SysfsBackend) GetDevice(id string) (*sysfsDevice, error) {
 }
 
 func (b *SysfsBackend) SetBrightness(id string, percent int, exponential bool) error {
+	return b.SetBrightnessWithExponent(id, percent, exponential, 1.2)
+}
+
+func (b *SysfsBackend) SetBrightnessWithExponent(id string, percent int, exponential bool, exponent float64) error {
 	dev, err := b.GetDevice(id)
 	if err != nil {
 		return err
@@ -177,7 +181,7 @@ func (b *SysfsBackend) SetBrightness(id string, percent int, exponential bool) e
 		return fmt.Errorf("percent out of range: %d", percent)
 	}
 
-	value := b.PercentToValue(percent, dev, exponential)
+	value := b.PercentToValueWithExponent(percent, dev, exponential, exponent)
 
 	parts := strings.SplitN(id, ":", 2)
 	if len(parts) != 2 {
@@ -201,6 +205,10 @@ func (b *SysfsBackend) SetBrightness(id string, percent int, exponential bool) e
 }
 
 func (b *SysfsBackend) PercentToValue(percent int, dev *sysfsDevice, exponential bool) int {
+	return b.PercentToValueWithExponent(percent, dev, exponential, 1.2)
+}
+
+func (b *SysfsBackend) PercentToValueWithExponent(percent int, dev *sysfsDevice, exponential bool, exponent float64) int {
 	if percent == 0 {
 		return dev.minValue
 	}
@@ -209,9 +217,8 @@ func (b *SysfsBackend) PercentToValue(percent int, dev *sysfsDevice, exponential
 	var value int
 
 	if exponential {
-		const exponent = 2.0
 		normalizedPercent := float64(percent) / 100.0
-		hardwarePercent := math.Pow(normalizedPercent, 1.0/exponent)
+		hardwarePercent := math.Pow(normalizedPercent, exponent)
 		value = dev.minValue + int(math.Round(hardwarePercent*float64(usableRange)))
 	} else {
 		value = dev.minValue + ((percent - 1) * usableRange / 99)
@@ -228,6 +235,10 @@ func (b *SysfsBackend) PercentToValue(percent int, dev *sysfsDevice, exponential
 }
 
 func (b *SysfsBackend) ValueToPercent(value int, dev *sysfsDevice, exponential bool) int {
+	return b.ValueToPercentWithExponent(value, dev, exponential, 1.2)
+}
+
+func (b *SysfsBackend) ValueToPercentWithExponent(value int, dev *sysfsDevice, exponential bool, exponent float64) int {
 	if value <= dev.minValue {
 		if dev.minValue == 0 && value == 0 {
 			return 0
@@ -243,11 +254,9 @@ func (b *SysfsBackend) ValueToPercent(value int, dev *sysfsDevice, exponential b
 	var percent int
 
 	if exponential {
-		const exponent = 2.0
-		linearPercent := 1 + ((value - dev.minValue) * 99 / usableRange)
-		normalizedLinear := float64(linearPercent) / 100.0
-		expPercent := math.Pow(normalizedLinear, exponent)
-		percent = int(math.Round(expPercent * 100.0))
+		hardwarePercent := float64(value-dev.minValue) / float64(usableRange)
+		normalizedPercent := math.Pow(hardwarePercent, 1.0/exponent)
+		percent = int(math.Round(normalizedPercent * 100.0))
 	} else {
 		percent = 1 + ((value - dev.minValue) * 99 / usableRange)
 	}

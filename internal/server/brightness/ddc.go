@@ -187,6 +187,10 @@ func (b *DDCBackend) GetDevices() ([]Device, error) {
 }
 
 func (b *DDCBackend) SetBrightness(id string, value int, exponential bool, callback func()) error {
+	return b.SetBrightnessWithExponent(id, value, exponential, 1.2, callback)
+}
+
+func (b *DDCBackend) SetBrightnessWithExponent(id string, value int, exponential bool, exponent float64, callback func()) error {
 	b.devicesMutex.RLock()
 	_, ok := b.devices[id]
 	b.devicesMutex.RUnlock()
@@ -222,7 +226,7 @@ func (b *DDCBackend) SetBrightness(id string, value int, exponential bool, callb
 				return
 			}
 
-			err := b.setBrightnessImmediate(id, pending.percent, exponential)
+			err := b.setBrightnessImmediateWithExponent(id, pending.percent, exponential, exponent)
 			if err != nil {
 				log.Debugf("Failed to set brightness for %s: %v", id, err)
 			}
@@ -237,6 +241,10 @@ func (b *DDCBackend) SetBrightness(id string, value int, exponential bool, callb
 }
 
 func (b *DDCBackend) setBrightnessImmediate(id string, value int, exponential bool) error {
+	return b.setBrightnessImmediateWithExponent(id, value, exponential, 1.2)
+}
+
+func (b *DDCBackend) setBrightnessImmediateWithExponent(id string, value int, exponential bool, exponent float64) error {
 	b.devicesMutex.RLock()
 	dev, ok := b.devices[id]
 	b.devicesMutex.RUnlock()

@@ -113,9 +113,10 @@ type ddcCapability struct {
 }
 
 type SetBrightnessParams struct {
-	Device      string `json:"device"`
-	Percent     int    `json:"percent"`
-	Exponential bool   `json:"exponential,omitempty"`
+	Device      string  `json:"device"`
+	Percent     int     `json:"percent"`
+	Exponential bool    `json:"exponential,omitempty"`
+	Exponent    float64 `json:"exponent,omitempty"`
 }
 
 func (m *Manager) Subscribe(id string) chan State {

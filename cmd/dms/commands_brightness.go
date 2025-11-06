@@ -43,6 +43,7 @@ func init() {
 	brightnessListCmd.Flags().Bool("ddc", false, "Include DDC/I2C monitors (slower)")
 	brightnessSetCmd.Flags().Bool("ddc", false, "Include DDC/I2C monitors (slower)")
 	brightnessSetCmd.Flags().Bool("exponential", false, "Use exponential brightness scaling")
+	brightnessSetCmd.Flags().Float64("exponent", 1.2, "Exponent for exponential scaling (default 1.2)")
 	brightnessGetCmd.Flags().Bool("ddc", false, "Include DDC/I2C monitors (slower)")
 
 	brightnessCmd.SetHelpTemplate(`{{.Long}}
@@ -189,6 +190,7 @@ func runBrightnessSet(cmd *cobra.Command, args []string) {
 
 	includeDDC, _ := cmd.Flags().GetBool("ddc")
 	exponential, _ := cmd.Flags().GetBool("exponential")
+	exponent, _ := cmd.Flags().GetFloat64("exponent")
 
 	// For backlight/leds devices, try logind backend first (requires D-Bus connection)
 	parts := strings.SplitN(deviceID, ":", 2)
@@ -211,7 +213,7 @@ func runBrightnessSet(cmd *cobra.Command, args []string) {
 				dev, err := sysfs.GetDevice(deviceID)
 				if err == nil {
 					// Calculate hardware value using the same logic as Manager.setViaSysfsWithLogind
-					value := sysfs.PercentToValue(percent, dev, exponential)
+					value := sysfs.PercentToValueWithExponent(percent, dev, exponential, exponent)
 
 					// Call logind with hardware value
 					if err := logind.SetBrightness(subsystem, name, uint32(value)); err == nil {
@@ -231,7 +233,7 @@ func runBrightnessSet(cmd *cobra.Command, args []string) {
 	// Fallback to direct sysfs (requires write permissions)
 	sysfs, err := brightness.NewSysfsBackend()
 	if err == nil {
-		if err := sysfs.SetBrightness(deviceID, percent, exponential); err == nil {
+		if err := sysfs.SetBrightnessWithExponent(deviceID, percent, exponential, exponent); err == nil {
 			fmt.Printf("Set %s to %d%%\n", deviceID, percent)
 			return
 		}
@@ -246,7 +248,7 @@ func runBrightnessSet(cmd *cobra.Command, args []string) {
 		if err == nil {
 			defer ddc.Close()
 			time.Sleep(100 * time.Millisecond)
-			if err := ddc.SetBrightness(deviceID, percent, exponential, nil); err == nil {
+			if err := ddc.SetBrightnessWithExponent(deviceID, percent, exponential, exponent, nil); err == nil {
 				fmt.Printf("Set %s to %d%%\n", deviceID, percent)
 				return
 			}
