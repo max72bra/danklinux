@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/AvengeMedia/danklinux/internal/deps"
 )
@@ -231,14 +232,14 @@ func (g *GentooDistribution) InstallPrerequisites(ctx context.Context, sudoPassw
 	}
 
 	systemUseFlags := map[string]string{
-		"sys-apps/systemd":      "policykit",
-		"x11-libs/cairo":        "X",
-		"media-libs/libglvnd":   "X",
-		"media-libs/freetype":   "harfbuzz",
-		"x11-libs/gtk+":         "wayland",
-		"gui-libs/gtk":          "wayland",
-		"media-libs/mesa":       "wayland",
-		"dev-python/pycairo":    "X",
+		"sys-apps/systemd":    "policykit",
+		"x11-libs/cairo":      "X",
+		"media-libs/libglvnd": "X",
+		"media-libs/freetype": "harfbuzz",
+		"x11-libs/gtk+":       "wayland",
+		"gui-libs/gtk":        "wayland",
+		"media-libs/mesa":     "wayland",
+		"dev-python/pycairo":  "X",
 	}
 
 	for pkg, flags := range systemUseFlags {
@@ -465,7 +466,7 @@ func (g *GentooDistribution) installPortagePackages(ctx context.Context, package
 
 	cmdStr := fmt.Sprintf("echo '%s' | sudo -S %s", sudoPassword, strings.Join(args, " "))
 	cmd := exec.CommandContext(ctx, "bash", "-c", cmdStr)
-	return g.runWithProgress(cmd, progressChan, PhaseSystemPackages, 0.40, 0.60)
+	return g.runWithProgressTimeout(cmd, progressChan, PhaseSystemPackages, 0.40, 0.60, 60*time.Minute)
 }
 
 func (g *GentooDistribution) setPackageUseFlags(ctx context.Context, packageName, useFlags, sudoPassword string) error {
@@ -644,5 +645,5 @@ func (g *GentooDistribution) installGURUPackages(ctx context.Context, packages [
 
 	cmdStr := fmt.Sprintf("echo '%s' | sudo -S %s", sudoPassword, strings.Join(args, " "))
 	cmd := exec.CommandContext(ctx, "bash", "-c", cmdStr)
-	return g.runWithProgress(cmd, progressChan, PhaseAURPackages, 0.70, 0.85)
+	return g.runWithProgressTimeout(cmd, progressChan, PhaseAURPackages, 0.70, 0.85, 60*time.Minute)
 }

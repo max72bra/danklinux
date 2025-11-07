@@ -410,10 +410,18 @@ func (b *BaseDistribution) versionCompare(v1, v2 string) int {
 
 // Common installation helper
 func (b *BaseDistribution) runWithProgress(cmd *exec.Cmd, progressChan chan<- InstallProgressMsg, phase InstallPhase, startProgress, endProgress float64) error {
-	return b.runWithProgressStep(cmd, progressChan, phase, startProgress, endProgress, "Installing...")
+	return b.runWithProgressTimeout(cmd, progressChan, phase, startProgress, endProgress, 10*time.Minute)
+}
+
+func (b *BaseDistribution) runWithProgressTimeout(cmd *exec.Cmd, progressChan chan<- InstallProgressMsg, phase InstallPhase, startProgress, endProgress float64, timeout time.Duration) error {
+	return b.runWithProgressStepTimeout(cmd, progressChan, phase, startProgress, endProgress, "Installing...", timeout)
 }
 
 func (b *BaseDistribution) runWithProgressStep(cmd *exec.Cmd, progressChan chan<- InstallProgressMsg, phase InstallPhase, startProgress, endProgress float64, stepMessage string) error {
+	return b.runWithProgressStepTimeout(cmd, progressChan, phase, startProgress, endProgress, stepMessage, 10*time.Minute)
+}
+
+func (b *BaseDistribution) runWithProgressStepTimeout(cmd *exec.Cmd, progressChan chan<- InstallProgressMsg, phase InstallPhase, startProgress, endProgress float64, stepMessage string, timeoutDuration time.Duration) error {
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return fmt.Errorf("failed to create stdout pipe: %w", err)
@@ -459,7 +467,7 @@ func (b *BaseDistribution) runWithProgressStep(cmd *exec.Cmd, progressChan chan<
 	progress := startProgress
 	progressStep := (endProgress - startProgress) / 50
 	lastOutput := ""
-	timeout := time.NewTimer(10 * time.Minute)
+	timeout := time.NewTimer(timeoutDuration)
 	defer timeout.Stop()
 
 	for {
@@ -496,13 +504,13 @@ func (b *BaseDistribution) runWithProgressStep(cmd *exec.Cmd, progressChan chan<
 					IsComplete: false,
 					LogOutput:  output,
 				}
-				timeout.Reset(10 * time.Minute)
+				timeout.Reset(timeoutDuration)
 			}
 		case <-timeout.C:
 			if cmd.Process != nil {
 				cmd.Process.Kill()
 			}
-			err := fmt.Errorf("installation timed out after 10 minutes")
+			err := fmt.Errorf("installation timed out after %v", timeoutDuration)
 			progressChan <- InstallProgressMsg{
 				Phase:      phase,
 				Progress:   startProgress,
