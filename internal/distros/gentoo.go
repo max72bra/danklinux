@@ -3,9 +3,7 @@ package distros
 import (
 	"context"
 	"fmt"
-	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 
 	"github.com/AvengeMedia/danklinux/internal/deps"
