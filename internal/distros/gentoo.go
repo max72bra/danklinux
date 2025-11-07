@@ -267,6 +267,25 @@ func (g *GentooDistribution) InstallPrerequisites(ctx context.Context, sudoPassw
 		return nil
 	}
 
+	progressChan <- InstallProgressMsg{
+		Phase:       PhasePrerequisites,
+		Progress:    0.07,
+		Step:        "Syncing Portage tree...",
+		IsComplete:  false,
+		NeedsSudo:   true,
+		CommandInfo: "sudo emerge --sync",
+		LogOutput:   "Syncing Portage tree with emerge --sync",
+	}
+
+	syncCmd := exec.CommandContext(ctx, "bash", "-c",
+		fmt.Sprintf("echo '%s' | sudo -S emerge --sync --quiet; exit_code=$?; exit $exit_code", sudoPassword))
+	syncOutput, syncErr := syncCmd.CombinedOutput()
+	if syncErr != nil {
+		g.log(fmt.Sprintf("emerge --sync output: %s", string(syncOutput)))
+		return fmt.Errorf("failed to sync Portage tree: %w\nOutput: %s", syncErr, string(syncOutput))
+	}
+	g.log("Portage tree synced successfully")
+
 	g.log(fmt.Sprintf("Installing prerequisites: %s", strings.Join(missingPkgs, ", ")))
 	progressChan <- InstallProgressMsg{
 		Phase:       PhasePrerequisites,
@@ -280,13 +299,13 @@ func (g *GentooDistribution) InstallPrerequisites(ctx context.Context, sudoPassw
 
 	args := []string{"emerge", "--ask=n", "--quiet"}
 	args = append(args, missingPkgs...)
-	cmdStr := fmt.Sprintf("echo '%s' | sudo -S %s", sudoPassword, strings.Join(args, " "))
+	cmdStr := fmt.Sprintf("echo '%s' | sudo -S %s; exit_code=$?; exit $exit_code", sudoPassword, strings.Join(args, " "))
 	cmd := exec.CommandContext(ctx, "bash", "-c", cmdStr)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		g.logError("failed to install prerequisites", err)
 		g.log(fmt.Sprintf("Prerequisites command output: %s", string(output)))
-		return fmt.Errorf("failed to install prerequisites: %w", err)
+		return fmt.Errorf("failed to install prerequisites: %w\nOutput: %s", err, string(output))
 	}
 	g.log(fmt.Sprintf("Prerequisites install output: %s", string(output)))
 
@@ -463,7 +482,7 @@ func (g *GentooDistribution) installPortagePackages(ctx context.Context, package
 		CommandInfo: fmt.Sprintf("sudo %s", strings.Join(args, " ")),
 	}
 
-	cmdStr := fmt.Sprintf("echo '%s' | sudo -S %s", sudoPassword, strings.Join(args, " "))
+	cmdStr := fmt.Sprintf("echo '%s' | sudo -S %s || exit $?", sudoPassword, strings.Join(args, " "))
 	cmd := exec.CommandContext(ctx, "bash", "-c", cmdStr)
 	return g.runWithProgressTimeout(cmd, progressChan, PhaseSystemPackages, 0.40, 0.60, 0)
 }
@@ -513,7 +532,7 @@ func (g *GentooDistribution) syncGURURepo(ctx context.Context, sudoPassword stri
 
 	// Enable GURU repository
 	enableCmd := exec.CommandContext(ctx, "bash", "-c",
-		fmt.Sprintf("echo '%s' | sudo -S eselect repository enable guru 2>&1", sudoPassword))
+		fmt.Sprintf("echo '%s' | sudo -S eselect repository enable guru 2>&1; exit_code=$?; exit $exit_code", sudoPassword))
 	output, err := enableCmd.CombinedOutput()
 
 	progressChan <- InstallProgressMsg{
@@ -544,7 +563,7 @@ func (g *GentooDistribution) syncGURURepo(ctx context.Context, sudoPassword stri
 	}
 
 	syncCmd := exec.CommandContext(ctx, "bash", "-c",
-		fmt.Sprintf("echo '%s' | sudo -S emaint sync --repo guru 2>&1", sudoPassword))
+		fmt.Sprintf("echo '%s' | sudo -S emaint sync --repo guru 2>&1; exit_code=$?; exit $exit_code", sudoPassword))
 	syncOutput, syncErr := syncCmd.CombinedOutput()
 
 	progressChan <- InstallProgressMsg{
@@ -642,7 +661,7 @@ func (g *GentooDistribution) installGURUPackages(ctx context.Context, packages [
 		CommandInfo: fmt.Sprintf("sudo %s", strings.Join(args, " ")),
 	}
 
-	cmdStr := fmt.Sprintf("echo '%s' | sudo -S %s", sudoPassword, strings.Join(args, " "))
+	cmdStr := fmt.Sprintf("echo '%s' | sudo -S %s || exit $?", sudoPassword, strings.Join(args, " "))
 	cmd := exec.CommandContext(ctx, "bash", "-c", cmdStr)
 	return g.runWithProgressTimeout(cmd, progressChan, PhaseAURPackages, 0.70, 0.85, 0)
 }
