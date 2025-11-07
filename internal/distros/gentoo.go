@@ -230,6 +230,23 @@ func (g *GentooDistribution) InstallPrerequisites(ctx context.Context, sudoPassw
 		LogOutput:  "Checking prerequisite packages",
 	}
 
+	systemUseFlags := map[string]string{
+		"sys-apps/systemd":      "policykit",
+		"x11-libs/cairo":        "X",
+		"media-libs/libglvnd":   "X",
+		"media-libs/freetype":   "harfbuzz",
+		"x11-libs/gtk+":         "wayland",
+		"gui-libs/gtk":          "wayland",
+		"media-libs/mesa":       "wayland",
+		"dev-python/pycairo":    "X",
+	}
+
+	for pkg, flags := range systemUseFlags {
+		if err := g.setPackageUseFlags(ctx, pkg, flags, sudoPassword); err != nil {
+			return fmt.Errorf("failed to set USE flags for %s: %w", pkg, err)
+		}
+	}
+
 	for _, pkg := range prerequisites {
 		checkCmd := exec.CommandContext(ctx, "qlist", "-I", pkg)
 		if err := checkCmd.Run(); err != nil {
@@ -261,7 +278,7 @@ func (g *GentooDistribution) InstallPrerequisites(ctx context.Context, sudoPassw
 		LogOutput:   fmt.Sprintf("Installing prerequisites: %s", strings.Join(missingPkgs, ", ")),
 	}
 
-	args := []string{"emerge", "--ask=n", "--quiet", "--autounmask-write"}
+	args := []string{"emerge", "--ask=n", "--quiet"}
 	args = append(args, missingPkgs...)
 	cmdStr := fmt.Sprintf("echo '%s' | sudo -S %s", sudoPassword, strings.Join(args, " "))
 	cmd := exec.CommandContext(ctx, "bash", "-c", cmdStr)
@@ -434,7 +451,7 @@ func (g *GentooDistribution) installPortagePackages(ctx context.Context, package
 		}
 	}
 
-	args := []string{"emerge", "--ask=n", "--quiet", "--autounmask-write"}
+	args := []string{"emerge", "--ask=n", "--quiet"}
 	args = append(args, packageNames...)
 
 	progressChan <- InstallProgressMsg{
@@ -462,6 +479,13 @@ func (g *GentooDistribution) setPackageUseFlags(ctx context.Context, packageName
 	}
 
 	useFlagLine := fmt.Sprintf("%s %s", packageName, useFlags)
+
+	checkExistingCmd := exec.CommandContext(ctx, "bash", "-c",
+		fmt.Sprintf("grep -q '^%s ' %s/danklinux 2>/dev/null", packageName, packageUseDir))
+	if checkExistingCmd.Run() == nil {
+		g.log(fmt.Sprintf("USE flags already set for %s", packageName))
+		return nil
+	}
 
 	appendCmd := exec.CommandContext(ctx, "bash", "-c",
 		fmt.Sprintf("echo '%s' | sudo -S bash -c \"echo '%s' >> %s/danklinux\"", sudoPassword, useFlagLine, packageUseDir))
