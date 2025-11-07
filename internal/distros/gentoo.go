@@ -479,8 +479,6 @@ func (g *GentooDistribution) setPackageUseFlags(ctx context.Context, packageName
 }
 
 func (g *GentooDistribution) syncGURURepo(ctx context.Context, sudoPassword string, progressChan chan<- InstallProgressMsg) error {
-	g.log("Enabling GURU repository...")
-
 	progressChan <- InstallProgressMsg{
 		Phase:       PhaseSystemPackages,
 		Progress:    0.55,
@@ -488,18 +486,29 @@ func (g *GentooDistribution) syncGURURepo(ctx context.Context, sudoPassword stri
 		IsComplete:  false,
 		NeedsSudo:   true,
 		CommandInfo: "sudo eselect repository enable guru",
+		LogOutput:   "Enabling GURU repository with eselect",
 	}
 
 	// Enable GURU repository
 	enableCmd := exec.CommandContext(ctx, "bash", "-c",
-		fmt.Sprintf("echo '%s' | sudo -S eselect repository enable guru", sudoPassword))
+		fmt.Sprintf("echo '%s' | sudo -S eselect repository enable guru 2>&1", sudoPassword))
 	output, err := enableCmd.CombinedOutput()
-	if err != nil {
-		g.logError("failed to enable GURU repository", err)
-		g.log(fmt.Sprintf("eselect repository enable output: %s", string(output)))
-		return fmt.Errorf("failed to enable GURU repository: %w", err)
+
+	progressChan <- InstallProgressMsg{
+		Phase:     PhaseSystemPackages,
+		Progress:  0.55,
+		LogOutput: fmt.Sprintf("eselect repository enable guru output:\n%s", string(output)),
 	}
-	g.log(fmt.Sprintf("GURU repository enabled: %s", string(output)))
+
+	if err != nil {
+		progressChan <- InstallProgressMsg{
+			Phase:     PhaseSystemPackages,
+			Progress:  0.55,
+			LogOutput: fmt.Sprintf("ERROR enabling GURU: %v", err),
+			Error:     err,
+		}
+		return fmt.Errorf("failed to enable GURU repository: %w\nOutput: %s", err, string(output))
+	}
 
 	// Sync GURU repository
 	progressChan <- InstallProgressMsg{
@@ -509,18 +518,28 @@ func (g *GentooDistribution) syncGURURepo(ctx context.Context, sudoPassword stri
 		IsComplete:  false,
 		NeedsSudo:   true,
 		CommandInfo: "sudo emaint sync --repo guru",
+		LogOutput:   "Syncing GURU repository",
 	}
 
-	g.log("Syncing GURU repository...")
 	syncCmd := exec.CommandContext(ctx, "bash", "-c",
-		fmt.Sprintf("echo '%s' | sudo -S emaint sync --repo guru", sudoPassword))
+		fmt.Sprintf("echo '%s' | sudo -S emaint sync --repo guru 2>&1", sudoPassword))
 	syncOutput, syncErr := syncCmd.CombinedOutput()
-	if syncErr != nil {
-		g.logError("failed to sync GURU repository", syncErr)
-		g.log(fmt.Sprintf("emaint sync output: %s", string(syncOutput)))
-		return fmt.Errorf("failed to sync GURU repository: %w", syncErr)
+
+	progressChan <- InstallProgressMsg{
+		Phase:     PhaseSystemPackages,
+		Progress:  0.57,
+		LogOutput: fmt.Sprintf("emaint sync --repo guru output:\n%s", string(syncOutput)),
 	}
-	g.log(fmt.Sprintf("GURU repository synced: %s", string(syncOutput)))
+
+	if syncErr != nil {
+		progressChan <- InstallProgressMsg{
+			Phase:     PhaseSystemPackages,
+			Progress:  0.57,
+			LogOutput: fmt.Sprintf("ERROR syncing GURU: %v", syncErr),
+			Error:     syncErr,
+		}
+		return fmt.Errorf("failed to sync GURU repository: %w\nOutput: %s", syncErr, string(syncOutput))
+	}
 
 	return nil
 }
