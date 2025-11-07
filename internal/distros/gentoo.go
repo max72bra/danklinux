@@ -440,26 +440,14 @@ func (g *GentooDistribution) setPackageUseFlags(ctx context.Context, packageName
 		return fmt.Errorf("failed to create package.use directory: %w", err)
 	}
 
-	useFlagLine := fmt.Sprintf("%s %s\n", packageName, useFlags)
+	useFlagLine := fmt.Sprintf("%s %s", packageName, useFlags)
 
 	appendCmd := exec.CommandContext(ctx, "bash", "-c",
-		fmt.Sprintf("echo '%s' | sudo -S tee -a %s/danklinux > /dev/null", sudoPassword, packageUseDir))
+		fmt.Sprintf("echo '%s' | sudo -S bash -c \"echo '%s' >> %s/danklinux\"", sudoPassword, useFlagLine, packageUseDir))
 
-	stdinPipe, err := appendCmd.StdinPipe()
+	output, err := appendCmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("failed to get stdin pipe: %w", err)
-	}
-
-	if err := appendCmd.Start(); err != nil {
-		return fmt.Errorf("failed to start append command: %w", err)
-	}
-
-	if _, err := stdinPipe.Write([]byte(useFlagLine)); err != nil {
-		return fmt.Errorf("failed to write USE flags: %w", err)
-	}
-	stdinPipe.Close()
-
-	if err := appendCmd.Wait(); err != nil {
+		g.log(fmt.Sprintf("append output: %s", string(output)))
 		return fmt.Errorf("failed to write USE flags to package.use: %w", err)
 	}
 
