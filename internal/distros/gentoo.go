@@ -476,25 +476,40 @@ func (g *GentooDistribution) syncGURURepo(ctx context.Context, progressChan chan
 	checkCmd := exec.CommandContext(ctx, "eselect", "repository", "list", "-i")
 	output, err := checkCmd.Output()
 	if err != nil {
-		return fmt.Errorf("failed to check enabled repositories: %w", err)
+		g.log(fmt.Sprintf("Warning: Could not check enabled repositories: %v", err))
 	}
 
 	if !strings.Contains(string(output), "guru") {
-		g.log("GURU repository not enabled, enabling it now...")
-		enableCmd := exec.CommandContext(ctx, "eselect", "repository", "enable", "guru")
-		enableOutput, err := enableCmd.CombinedOutput()
-		if err != nil {
-			g.logError("failed to enable GURU repo", err)
-			g.log(fmt.Sprintf("GURU enable command output: %s", string(enableOutput)))
-			return fmt.Errorf("failed to enable GURU repo: %w", err)
+		g.log("GURU repository not enabled, adding repos.conf entry manually...")
+
+		reposConfDir := "/etc/portage/repos.conf"
+		guruConfPath := reposConfDir + "/guru.conf"
+
+		mkdirCmd := exec.CommandContext(ctx, "mkdir", "-p", reposConfDir)
+		if mkdirOutput, err := mkdirCmd.CombinedOutput(); err != nil {
+			g.log(fmt.Sprintf("mkdir output: %s", string(mkdirOutput)))
+			return fmt.Errorf("failed to create repos.conf directory: %w", err)
 		}
-		g.log(fmt.Sprintf("GURU repo enabled: %s", string(enableOutput)))
+
+		guruConf := `[guru]
+location = /var/db/repos/guru
+sync-type = git
+sync-uri = https://github.com/gentoo-mirror/guru.git
+`
+
+		writeCmd := exec.CommandContext(ctx, "bash", "-c",
+			fmt.Sprintf("cat > %s << 'EOF'\n%sEOF", guruConfPath, guruConf))
+		if writeOutput, err := writeCmd.CombinedOutput(); err != nil {
+			g.log(fmt.Sprintf("write guru.conf output: %s", string(writeOutput)))
+			return fmt.Errorf("failed to write guru.conf: %w", err)
+		}
+		g.log("Created /etc/portage/repos.conf/guru.conf")
 	} else {
 		g.log("GURU repository already enabled")
 	}
 
 	g.log("Syncing GURU repository...")
-	cmd := exec.CommandContext(ctx, "emerge", "--sync", "guru")
+	cmd := exec.CommandContext(ctx, "emaint", "sync", "--repo", "guru")
 	syncOutput, err := cmd.CombinedOutput()
 	if err != nil {
 		g.logError("failed to sync GURU repo", err)
@@ -502,6 +517,14 @@ func (g *GentooDistribution) syncGURURepo(ctx context.Context, progressChan chan
 		return fmt.Errorf("failed to sync GURU repo: %w", err)
 	}
 	g.log(fmt.Sprintf("GURU repo synced successfully: %s", string(syncOutput)))
+
+	verifyCmd := exec.CommandContext(ctx, "ls", "-la", "/var/db/repos/guru/gui-wm/niri")
+	verifyOutput, verifyErr := verifyCmd.CombinedOutput()
+	if verifyErr != nil {
+		g.log(fmt.Sprintf("WARNING: Could not verify niri ebuilds exist: %s", string(verifyOutput)))
+	} else {
+		g.log(fmt.Sprintf("Verified niri ebuilds exist: %s", string(verifyOutput)))
+	}
 
 	return nil
 }
