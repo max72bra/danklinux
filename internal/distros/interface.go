@@ -71,11 +71,12 @@ type InstallProgressMsg struct {
 
 // PackageMapping defines how to install a package on a specific distro
 type PackageMapping struct {
-	Name       string         // Package name to install
-	Repository RepositoryType // Repository type
-	RepoURL    string         // Repository URL if needed (e.g., COPR repo, PPA)
-	BuildFunc  string         // Name of manual build function if RepoTypeManual
-	UseFlags   string         // USE flags for Gentoo packages
+	Name           string         // Package name to install
+	Repository     RepositoryType // Repository type
+	RepoURL        string         // Repository URL if needed (e.g., COPR repo, PPA)
+	BuildFunc      string         // Name of manual build function if RepoTypeManual
+	UseFlags       string         // USE flags for Gentoo packages
+	AcceptKeywords string         // Accept keywords for Gentoo packages (e.g., "~amd64")
 }
 
 // Distribution defines a Linux distribution with all its specific configurations

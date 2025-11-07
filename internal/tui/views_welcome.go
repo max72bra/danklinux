@@ -144,7 +144,15 @@ func (m Model) viewWelcome() string {
 				Italic(true)
 			note := noteStyle.Render("* Existing configs can be replaced (and backed up) or preserved")
 			b.WriteString(note)
-			b.WriteString("\n\n")
+			b.WriteString("\n")
+
+			if m.osInfo.Distribution.ID == "gentoo" {
+				gentooNote := noteStyle.Render("* Will set per-package USE flags and unmask testing packages as needed")
+				b.WriteString(gentooNote)
+				b.WriteString("\n")
+			}
+
+			b.WriteString("\n")
 		}
 
 	} else if m.isLoading {

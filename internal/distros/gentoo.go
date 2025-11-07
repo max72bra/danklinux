@@ -149,7 +149,7 @@ func (g *GentooDistribution) GetPackageMapping(wm deps.WindowManager) map[string
 func (g *GentooDistribution) GetPackageMappingWithVariants(wm deps.WindowManager, variants map[string]deps.PackageVariant) map[string]PackageMapping {
 	packages := map[string]PackageMapping{
 		"git":                    {Name: "dev-vcs/git", Repository: RepoTypeSystem},
-		"ghostty":                {Name: "x11-terms/ghostty", Repository: RepoTypeSystem, UseFlags: "X wayland"},
+		"ghostty":                {Name: "x11-terms/ghostty", Repository: RepoTypeSystem, UseFlags: "X wayland", AcceptKeywords: "~amd64"},
 		"kitty":                  {Name: "x11-terms/kitty", Repository: RepoTypeSystem, UseFlags: "X wayland"},
 		"alacritty":              {Name: "x11-terms/alacritty", Repository: RepoTypeSystem, UseFlags: "X wayland"},
 		"wl-clipboard":           {Name: "gui-apps/wl-clipboard", Repository: RepoTypeSystem},
@@ -159,8 +159,8 @@ func (g *GentooDistribution) GetPackageMappingWithVariants(wm deps.WindowManager
 		"hyprpicker":             g.getHyprpickerMapping(variants["hyprland"]),
 
 		"quickshell":              g.getQuickshellMapping(variants["quickshell"]),
-		"matugen":                 {Name: "x11-misc/matugen", Repository: RepoTypeGURU},
-		"cliphist":                {Name: "app-misc/cliphist", Repository: RepoTypeGURU},
+		"matugen":                 {Name: "x11-misc/matugen", Repository: RepoTypeGURU, AcceptKeywords: "~amd64"},
+		"cliphist":                {Name: "app-misc/cliphist", Repository: RepoTypeGURU, AcceptKeywords: "~amd64"},
 		"dms (DankMaterialShell)": g.getDmsMapping(variants["dms (DankMaterialShell)"]),
 		"dgop":                    {Name: "dgop", Repository: RepoTypeManual, BuildFunc: "installDgop"},
 	}
@@ -183,9 +183,9 @@ func (g *GentooDistribution) GetPackageMappingWithVariants(wm deps.WindowManager
 
 func (g *GentooDistribution) getQuickshellMapping(variant deps.PackageVariant) PackageMapping {
 	if forceQuickshellGit || variant == deps.VariantGit {
-		return PackageMapping{Name: "gui-apps/quickshell", Repository: RepoTypeGURU, UseFlags: "-breakpad jemalloc sockets wayland layer-shell session-lock toplevel-management screencopy X pipewire tray mpris pam hyprland hyprland-global-shortcuts hyprland-focus-grab i3 i3-ipc bluetooth"}
+		return PackageMapping{Name: "gui-apps/quickshell", Repository: RepoTypeGURU, UseFlags: "-breakpad jemalloc sockets wayland layer-shell session-lock toplevel-management screencopy X pipewire tray mpris pam hyprland hyprland-global-shortcuts hyprland-focus-grab i3 i3-ipc bluetooth", AcceptKeywords: "~amd64"}
 	}
-	return PackageMapping{Name: "gui-apps/quickshell", Repository: RepoTypeGURU, UseFlags: "-breakpad jemalloc sockets wayland layer-shell session-lock toplevel-management screencopy X pipewire tray mpris pam hyprland hyprland-global-shortcuts hyprland-focus-grab i3 i3-ipc bluetooth"}
+	return PackageMapping{Name: "gui-apps/quickshell", Repository: RepoTypeGURU, UseFlags: "-breakpad jemalloc sockets wayland layer-shell session-lock toplevel-management screencopy X pipewire tray mpris pam hyprland hyprland-global-shortcuts hyprland-focus-grab i3 i3-ipc bluetooth", AcceptKeywords: "~amd64"}
 }
 
 func (g *GentooDistribution) getDmsMapping(_ deps.PackageVariant) PackageMapping {
@@ -194,20 +194,20 @@ func (g *GentooDistribution) getDmsMapping(_ deps.PackageVariant) PackageMapping
 
 func (g *GentooDistribution) getHyprlandMapping(variant deps.PackageVariant) PackageMapping {
 	if variant == deps.VariantGit {
-		return PackageMapping{Name: "gui-wm/hyprland", Repository: RepoTypeGURU, UseFlags: "X"}
+		return PackageMapping{Name: "gui-wm/hyprland", Repository: RepoTypeGURU, UseFlags: "X", AcceptKeywords: "~amd64"}
 	}
-	return PackageMapping{Name: "gui-wm/hyprland", Repository: RepoTypeSystem, UseFlags: "X"}
+	return PackageMapping{Name: "gui-wm/hyprland", Repository: RepoTypeSystem, UseFlags: "X", AcceptKeywords: "~amd64"}
 }
 
 func (g *GentooDistribution) getHyprpickerMapping(_ deps.PackageVariant) PackageMapping {
-	return PackageMapping{Name: "gui-apps/hyprpicker", Repository: RepoTypeGURU}
+	return PackageMapping{Name: "gui-apps/hyprpicker", Repository: RepoTypeGURU, AcceptKeywords: "~amd64"}
 }
 
 func (g *GentooDistribution) getNiriMapping(variant deps.PackageVariant) PackageMapping {
 	if variant == deps.VariantGit {
-		return PackageMapping{Name: "gui-wm/niri", Repository: RepoTypeGURU, UseFlags: "dbus screencast"}
+		return PackageMapping{Name: "gui-wm/niri", Repository: RepoTypeGURU, UseFlags: "dbus screencast", AcceptKeywords: "~amd64"}
 	}
-	return PackageMapping{Name: "gui-wm/niri", Repository: RepoTypeSystem, UseFlags: "dbus screencast"}
+	return PackageMapping{Name: "gui-wm/niri", Repository: RepoTypeSystem, UseFlags: "dbus screencast", AcceptKeywords: "~amd64"}
 }
 
 func (g *GentooDistribution) getPrerequisites() []string {
@@ -406,6 +406,11 @@ func (g *GentooDistribution) installPortagePackages(ctx context.Context, package
 	g.log(fmt.Sprintf("Installing Portage packages: %s", strings.Join(packageNames, ", ")))
 
 	for _, pkg := range packages {
+		if pkg.AcceptKeywords != "" {
+			if err := g.setPackageAcceptKeywords(ctx, pkg.Name, pkg.AcceptKeywords, sudoPassword); err != nil {
+				return fmt.Errorf("failed to set accept keywords for %s: %w", pkg.Name, err)
+			}
+		}
 		if pkg.UseFlags != "" {
 			if err := g.setPackageUseFlags(ctx, pkg.Name, pkg.UseFlags, sudoPassword); err != nil {
 				return fmt.Errorf("failed to set USE flags for %s: %w", pkg.Name, err)
@@ -455,6 +460,31 @@ func (g *GentooDistribution) setPackageUseFlags(ctx context.Context, packageName
 	return nil
 }
 
+func (g *GentooDistribution) setPackageAcceptKeywords(ctx context.Context, packageName, keywords, sudoPassword string) error {
+	acceptKeywordsDir := "/etc/portage/package.accept_keywords"
+
+	mkdirCmd := exec.CommandContext(ctx, "bash", "-c",
+		fmt.Sprintf("echo '%s' | sudo -S mkdir -p %s", sudoPassword, acceptKeywordsDir))
+	if output, err := mkdirCmd.CombinedOutput(); err != nil {
+		g.log(fmt.Sprintf("mkdir output: %s", string(output)))
+		return fmt.Errorf("failed to create package.accept_keywords directory: %w", err)
+	}
+
+	keywordLine := fmt.Sprintf("%s %s", packageName, keywords)
+
+	appendCmd := exec.CommandContext(ctx, "bash", "-c",
+		fmt.Sprintf("echo '%s' | sudo -S bash -c \"echo '%s' >> %s/danklinux\"", sudoPassword, keywordLine, acceptKeywordsDir))
+
+	output, err := appendCmd.CombinedOutput()
+	if err != nil {
+		g.log(fmt.Sprintf("append output: %s", string(output)))
+		return fmt.Errorf("failed to write accept keywords: %w", err)
+	}
+
+	g.log(fmt.Sprintf("Set accept keywords for %s: %s", packageName, keywords))
+	return nil
+}
+
 func (g *GentooDistribution) installGURUPackages(ctx context.Context, packages []PackageMapping, sudoPassword string, progressChan chan<- InstallProgressMsg) error {
 	if len(packages) == 0 {
 		return nil
@@ -464,6 +494,11 @@ func (g *GentooDistribution) installGURUPackages(ctx context.Context, packages [
 	g.log(fmt.Sprintf("Installing GURU packages: %s", strings.Join(packageNames, ", ")))
 
 	for _, pkg := range packages {
+		if pkg.AcceptKeywords != "" {
+			if err := g.setPackageAcceptKeywords(ctx, pkg.Name, pkg.AcceptKeywords, sudoPassword); err != nil {
+				return fmt.Errorf("failed to set accept keywords for %s: %w", pkg.Name, err)
+			}
+		}
 		if pkg.UseFlags != "" {
 			if err := g.setPackageUseFlags(ctx, pkg.Name, pkg.UseFlags, sudoPassword); err != nil {
 				return fmt.Errorf("failed to set USE flags for %s: %w", pkg.Name, err)
