@@ -218,7 +218,7 @@ func runShellInteractive(session bool) {
 	defer removePIDFile()
 
 	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM, syscall.SIGUSR1)
 
 	go func() {
 		if err := cmd.Wait(); err != nil {
@@ -231,9 +231,9 @@ func runShellInteractive(session bool) {
 	for {
 		select {
 		case sig := <-sigChan:
-			// Handle SIGHUP restart for non-session managed processes
-			if sig == syscall.SIGHUP && !isSessionManaged {
-				log.Infof("Received SIGHUP, spawning detached restart process...")
+			// Handle SIGUSR1 restart for non-session managed processes
+			if sig == syscall.SIGUSR1 && !isSessionManaged {
+				log.Infof("Received SIGUSR1, spawning detached restart process...")
 				execDetachedRestart(os.Getpid())
 				// Exit immediately to avoid race conditions with detached restart
 				return
@@ -287,10 +287,10 @@ func restartShell() {
 			continue
 		}
 
-		if err := proc.Signal(syscall.SIGHUP); err != nil {
-			log.Errorf("Error sending SIGHUP to process %d: %v", pid, err)
+		if err := proc.Signal(syscall.SIGUSR1); err != nil {
+			log.Errorf("Error sending SIGUSR1 to process %d: %v", pid, err)
 		} else {
-			log.Infof("Sent SIGHUP to DMS process with PID %d", pid)
+			log.Infof("Sent SIGUSR1 to DMS process with PID %d", pid)
 		}
 	}
 }
@@ -434,7 +434,7 @@ func runShellDaemon(session bool) {
 	defer removePIDFile()
 
 	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM, syscall.SIGUSR1)
 
 	go func() {
 		if err := cmd.Wait(); err != nil {
@@ -447,9 +447,9 @@ func runShellDaemon(session bool) {
 	for {
 		select {
 		case sig := <-sigChan:
-			// Handle SIGHUP restart for non-session managed processes
-			if sig == syscall.SIGHUP && !isSessionManaged {
-				log.Infof("Received SIGHUP, spawning detached restart process...")
+			// Handle SIGUSR1 restart for non-session managed processes
+			if sig == syscall.SIGUSR1 && !isSessionManaged {
+				log.Infof("Received SIGUSR1, spawning detached restart process...")
 				execDetachedRestart(os.Getpid())
 				// Exit immediately to avoid race conditions with detached restart
 				return
