@@ -233,7 +233,7 @@ func (g *GentooDistribution) getPrerequisites() []string {
 }
 
 func (g *GentooDistribution) setGlobalUseFlags(ctx context.Context, sudoPassword string) error {
-	useFlags := "wayland vulkan opengl accessibility policykit X"
+	useFlags := "wayland vulkan opengl accessibility policykit X udev alsa gdbm qml gtk qt6 jpeg webp png gif tiff brotli dbus svg"
 
 	checkCmd := exec.CommandContext(ctx, "grep", "-q", "^USE=", "/etc/portage/make.conf")
 	hasUse := checkCmd.Run() == nil

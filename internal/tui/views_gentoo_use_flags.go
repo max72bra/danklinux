@@ -34,6 +34,20 @@ func (m Model) viewGentooUseFlags() string {
 		"accessibility",
 		"policykit",
 		"X",
+		"udev",
+		"alsa",
+		"gdbm",
+		"qml",
+		"gtk",
+		"qt6",
+		"jpeg",
+		"webp",
+		"png",
+		"gif",
+		"tiff",
+		"brotli",
+		"dbus",
+		"svg",
 	}
 
 	for _, flag := range useFlags {
