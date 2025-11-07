@@ -252,6 +252,7 @@ func (g *GentooDistribution) InstallPrerequisites(ctx context.Context, sudoPassw
 		"dev-python/pycairo":    "X",
 		"app-text/xmlto":        "text",
 		"dev-qt/qtbase":         "opengl wayland",
+		"dev-qt/qtdeclarative":  "opengl",
 		"x11-libs/libxkbcommon": "X",
 		"dev-qt/qttools":        "opengl",
 	}
@@ -517,8 +518,13 @@ func (g *GentooDistribution) setPackageUseFlags(ctx context.Context, packageName
 	checkExistingCmd := exec.CommandContext(ctx, "bash", "-c",
 		fmt.Sprintf("grep -q '^%s ' %s/danklinux 2>/dev/null", packageName, packageUseDir))
 	if checkExistingCmd.Run() == nil {
-		g.log(fmt.Sprintf("USE flags already set for %s", packageName))
-		return nil
+		g.log(fmt.Sprintf("Updating USE flags for %s from existing entry", packageName))
+		replaceCmd := exec.CommandContext(ctx, "bash", "-c",
+			fmt.Sprintf("echo '%s' | sudo -S sed -i '/^%s /d' %s/danklinux", sudoPassword, packageName, packageUseDir))
+		if output, err := replaceCmd.CombinedOutput(); err != nil {
+			g.log(fmt.Sprintf("sed delete output: %s", string(output)))
+			return fmt.Errorf("failed to remove old USE flags: %w", err)
+		}
 	}
 
 	appendCmd := exec.CommandContext(ctx, "bash", "-c",
@@ -623,8 +629,13 @@ func (g *GentooDistribution) setPackageAcceptKeywords(ctx context.Context, packa
 	checkExistingCmd := exec.CommandContext(ctx, "bash", "-c",
 		fmt.Sprintf("grep -q '^%s ' %s/danklinux 2>/dev/null", packageName, acceptKeywordsDir))
 	if checkExistingCmd.Run() == nil {
-		g.log(fmt.Sprintf("Accept keywords already set for %s", packageName))
-		return nil
+		g.log(fmt.Sprintf("Updating accept keywords for %s from existing entry", packageName))
+		replaceCmd := exec.CommandContext(ctx, "bash", "-c",
+			fmt.Sprintf("echo '%s' | sudo -S sed -i '/^%s /d' %s/danklinux", sudoPassword, packageName, acceptKeywordsDir))
+		if output, err := replaceCmd.CombinedOutput(); err != nil {
+			g.log(fmt.Sprintf("sed delete output: %s", string(output)))
+			return fmt.Errorf("failed to remove old accept keywords: %w", err)
+		}
 	}
 
 	appendCmd := exec.CommandContext(ctx, "bash", "-c",
