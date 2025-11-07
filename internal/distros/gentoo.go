@@ -494,7 +494,7 @@ func (g *GentooDistribution) syncGURURepo(ctx context.Context, progressChan chan
 	}
 
 	g.log("Syncing GURU repository...")
-	cmd := exec.CommandContext(ctx, "emaint", "sync", "-r", "guru")
+	cmd := exec.CommandContext(ctx, "emerge", "--sync", "guru")
 	syncOutput, err := cmd.CombinedOutput()
 	if err != nil {
 		g.logError("failed to sync GURU repo", err)
