@@ -520,7 +520,7 @@ func (g *GentooDistribution) setPackageUseFlags(ctx context.Context, packageName
 	if checkExistingCmd.Run() == nil {
 		g.log(fmt.Sprintf("Updating USE flags for %s from existing entry", packageName))
 		replaceCmd := exec.CommandContext(ctx, "bash", "-c",
-			fmt.Sprintf("echo '%s' | sudo -S sed -i '/^%s /d' %s/danklinux", sudoPassword, packageName, packageUseDir))
+			fmt.Sprintf("echo '%s' | sudo -S sed -i '/^%s /d' %s/danklinux; exit_code=$?; exit $exit_code", sudoPassword, packageName, packageUseDir))
 		if output, err := replaceCmd.CombinedOutput(); err != nil {
 			g.log(fmt.Sprintf("sed delete output: %s", string(output)))
 			return fmt.Errorf("failed to remove old USE flags: %w", err)
@@ -631,7 +631,7 @@ func (g *GentooDistribution) setPackageAcceptKeywords(ctx context.Context, packa
 	if checkExistingCmd.Run() == nil {
 		g.log(fmt.Sprintf("Updating accept keywords for %s from existing entry", packageName))
 		replaceCmd := exec.CommandContext(ctx, "bash", "-c",
-			fmt.Sprintf("echo '%s' | sudo -S sed -i '/^%s /d' %s/danklinux", sudoPassword, packageName, acceptKeywordsDir))
+			fmt.Sprintf("echo '%s' | sudo -S sed -i '/^%s /d' %s/danklinux; exit_code=$?; exit $exit_code", sudoPassword, packageName, acceptKeywordsDir))
 		if output, err := replaceCmd.CombinedOutput(); err != nil {
 			g.log(fmt.Sprintf("sed delete output: %s", string(output)))
 			return fmt.Errorf("failed to remove old accept keywords: %w", err)
