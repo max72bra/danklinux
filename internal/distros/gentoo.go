@@ -261,7 +261,7 @@ func (g *GentooDistribution) InstallPrerequisites(ctx context.Context, sudoPassw
 		LogOutput:   fmt.Sprintf("Installing prerequisites: %s", strings.Join(missingPkgs, ", ")),
 	}
 
-	args := []string{"emerge", "--ask=n", "--quiet"}
+	args := []string{"emerge", "--ask=n", "--quiet", "--autounmask-write"}
 	args = append(args, missingPkgs...)
 	cmdStr := fmt.Sprintf("echo '%s' | sudo -S %s", sudoPassword, strings.Join(args, " "))
 	cmd := exec.CommandContext(ctx, "bash", "-c", cmdStr)
@@ -434,7 +434,7 @@ func (g *GentooDistribution) installPortagePackages(ctx context.Context, package
 		}
 	}
 
-	args := []string{"emerge", "--ask=n", "--quiet"}
+	args := []string{"emerge", "--ask=n", "--quiet", "--autounmask-write"}
 	args = append(args, packageNames...)
 
 	progressChan <- InstallProgressMsg{
