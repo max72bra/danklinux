@@ -75,6 +75,7 @@ type PackageMapping struct {
 	Repository RepositoryType // Repository type
 	RepoURL    string         // Repository URL if needed (e.g., COPR repo, PPA)
 	BuildFunc  string         // Name of manual build function if RepoTypeManual
+	UseFlags   string         // USE flags for Gentoo packages
 }
 
 // Distribution defines a Linux distribution with all its specific configurations

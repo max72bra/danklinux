@@ -149,11 +149,11 @@ func (g *GentooDistribution) GetPackageMapping(wm deps.WindowManager) map[string
 func (g *GentooDistribution) GetPackageMappingWithVariants(wm deps.WindowManager, variants map[string]deps.PackageVariant) map[string]PackageMapping {
 	packages := map[string]PackageMapping{
 		"git":                    {Name: "dev-vcs/git", Repository: RepoTypeSystem},
-		"ghostty":                {Name: "x11-terms/ghostty", Repository: RepoTypeSystem},
-		"kitty":                  {Name: "x11-terms/kitty", Repository: RepoTypeSystem},
-		"alacritty":              {Name: "x11-terms/alacritty", Repository: RepoTypeSystem},
+		"ghostty":                {Name: "x11-terms/ghostty", Repository: RepoTypeSystem, UseFlags: "X wayland"},
+		"kitty":                  {Name: "x11-terms/kitty", Repository: RepoTypeSystem, UseFlags: "X wayland"},
+		"alacritty":              {Name: "x11-terms/alacritty", Repository: RepoTypeSystem, UseFlags: "X wayland"},
 		"wl-clipboard":           {Name: "gui-apps/wl-clipboard", Repository: RepoTypeSystem},
-		"xdg-desktop-portal-gtk": {Name: "sys-apps/xdg-desktop-portal-gtk", Repository: RepoTypeSystem},
+		"xdg-desktop-portal-gtk": {Name: "sys-apps/xdg-desktop-portal-gtk", Repository: RepoTypeSystem, UseFlags: "wayland X"},
 		"mate-polkit":            {Name: "mate-extra/mate-polkit", Repository: RepoTypeSystem},
 		"accountsservice":        {Name: "sys-apps/accountsservice", Repository: RepoTypeSystem},
 		"hyprpicker":             g.getHyprpickerMapping(variants["hyprland"]),
@@ -183,9 +183,9 @@ func (g *GentooDistribution) GetPackageMappingWithVariants(wm deps.WindowManager
 
 func (g *GentooDistribution) getQuickshellMapping(variant deps.PackageVariant) PackageMapping {
 	if forceQuickshellGit || variant == deps.VariantGit {
-		return PackageMapping{Name: "gui-apps/quickshell", Repository: RepoTypeGURU}
+		return PackageMapping{Name: "gui-apps/quickshell", Repository: RepoTypeGURU, UseFlags: "-breakpad jemalloc sockets wayland layer-shell session-lock toplevel-management screencopy X pipewire tray mpris pam hyprland hyprland-global-shortcuts hyprland-focus-grab i3 i3-ipc bluetooth"}
 	}
-	return PackageMapping{Name: "gui-apps/quickshell", Repository: RepoTypeGURU}
+	return PackageMapping{Name: "gui-apps/quickshell", Repository: RepoTypeGURU, UseFlags: "-breakpad jemalloc sockets wayland layer-shell session-lock toplevel-management screencopy X pipewire tray mpris pam hyprland hyprland-global-shortcuts hyprland-focus-grab i3 i3-ipc bluetooth"}
 }
 
 func (g *GentooDistribution) getDmsMapping(_ deps.PackageVariant) PackageMapping {
@@ -194,9 +194,9 @@ func (g *GentooDistribution) getDmsMapping(_ deps.PackageVariant) PackageMapping
 
 func (g *GentooDistribution) getHyprlandMapping(variant deps.PackageVariant) PackageMapping {
 	if variant == deps.VariantGit {
-		return PackageMapping{Name: "gui-wm/hyprland", Repository: RepoTypeGURU}
+		return PackageMapping{Name: "gui-wm/hyprland", Repository: RepoTypeGURU, UseFlags: "X"}
 	}
-	return PackageMapping{Name: "gui-wm/hyprland", Repository: RepoTypeSystem}
+	return PackageMapping{Name: "gui-wm/hyprland", Repository: RepoTypeSystem, UseFlags: "X"}
 }
 
 func (g *GentooDistribution) getHyprpickerMapping(_ deps.PackageVariant) PackageMapping {
@@ -205,9 +205,9 @@ func (g *GentooDistribution) getHyprpickerMapping(_ deps.PackageVariant) Package
 
 func (g *GentooDistribution) getNiriMapping(variant deps.PackageVariant) PackageMapping {
 	if variant == deps.VariantGit {
-		return PackageMapping{Name: "gui-wm/niri", Repository: RepoTypeGURU}
+		return PackageMapping{Name: "gui-wm/niri", Repository: RepoTypeGURU, UseFlags: "dbus screencast"}
 	}
-	return PackageMapping{Name: "gui-wm/niri", Repository: RepoTypeSystem}
+	return PackageMapping{Name: "gui-wm/niri", Repository: RepoTypeSystem, UseFlags: "dbus screencast"}
 }
 
 func (g *GentooDistribution) getPrerequisites() []string {
@@ -293,29 +293,30 @@ func (g *GentooDistribution) InstallPackages(ctx context.Context, dependencies [
 	systemPkgs, guruPkgs, manualPkgs := g.categorizePackages(dependencies, wm, reinstallFlags)
 
 	if len(systemPkgs) > 0 {
+		systemPkgNames := g.extractPackageNames(systemPkgs)
 		progressChan <- InstallProgressMsg{
 			Phase:      PhaseSystemPackages,
 			Progress:   0.35,
 			Step:       fmt.Sprintf("Installing %d system packages...", len(systemPkgs)),
 			IsComplete: false,
 			NeedsSudo:  true,
-			LogOutput:  fmt.Sprintf("Installing system packages: %s", strings.Join(systemPkgs, ", ")),
+			LogOutput:  fmt.Sprintf("Installing system packages: %s", strings.Join(systemPkgNames, ", ")),
 		}
 		if err := g.installPortagePackages(ctx, systemPkgs, sudoPassword, progressChan); err != nil {
 			return fmt.Errorf("failed to install Portage packages: %w", err)
 		}
 	}
 
-	guruPkgNames := g.extractPackageNames(guruPkgs)
-	if len(guruPkgNames) > 0 {
+	if len(guruPkgs) > 0 {
+		guruPkgNames := g.extractPackageNames(guruPkgs)
 		progressChan <- InstallProgressMsg{
 			Phase:      PhaseAURPackages,
 			Progress:   0.65,
-			Step:       fmt.Sprintf("Installing %d GURU packages...", len(guruPkgNames)),
+			Step:       fmt.Sprintf("Installing %d GURU packages...", len(guruPkgs)),
 			IsComplete: false,
 			LogOutput:  fmt.Sprintf("Installing GURU packages: %s", strings.Join(guruPkgNames, ", ")),
 		}
-		if err := g.installGURUPackages(ctx, guruPkgNames, sudoPassword, progressChan); err != nil {
+		if err := g.installGURUPackages(ctx, guruPkgs, sudoPassword, progressChan); err != nil {
 			return fmt.Errorf("failed to install GURU packages: %w", err)
 		}
 	}
@@ -352,8 +353,8 @@ func (g *GentooDistribution) InstallPackages(ctx context.Context, dependencies [
 	return nil
 }
 
-func (g *GentooDistribution) categorizePackages(dependencies []deps.Dependency, wm deps.WindowManager, reinstallFlags map[string]bool) ([]string, []PackageMapping, []string) {
-	systemPkgs := []string{}
+func (g *GentooDistribution) categorizePackages(dependencies []deps.Dependency, wm deps.WindowManager, reinstallFlags map[string]bool) ([]PackageMapping, []PackageMapping, []string) {
+	systemPkgs := []PackageMapping{}
 	guruPkgs := []PackageMapping{}
 	manualPkgs := []string{}
 
@@ -377,7 +378,7 @@ func (g *GentooDistribution) categorizePackages(dependencies []deps.Dependency, 
 
 		switch pkgInfo.Repository {
 		case RepoTypeSystem:
-			systemPkgs = append(systemPkgs, pkgInfo.Name)
+			systemPkgs = append(systemPkgs, pkgInfo)
 		case RepoTypeGURU:
 			guruPkgs = append(guruPkgs, pkgInfo)
 		case RepoTypeManual:
@@ -396,15 +397,24 @@ func (g *GentooDistribution) extractPackageNames(packages []PackageMapping) []st
 	return names
 }
 
-func (g *GentooDistribution) installPortagePackages(ctx context.Context, packages []string, sudoPassword string, progressChan chan<- InstallProgressMsg) error {
+func (g *GentooDistribution) installPortagePackages(ctx context.Context, packages []PackageMapping, sudoPassword string, progressChan chan<- InstallProgressMsg) error {
 	if len(packages) == 0 {
 		return nil
 	}
 
-	g.log(fmt.Sprintf("Installing Portage packages: %s", strings.Join(packages, ", ")))
+	packageNames := g.extractPackageNames(packages)
+	g.log(fmt.Sprintf("Installing Portage packages: %s", strings.Join(packageNames, ", ")))
+
+	for _, pkg := range packages {
+		if pkg.UseFlags != "" {
+			if err := g.setPackageUseFlags(ctx, pkg.Name, pkg.UseFlags, sudoPassword); err != nil {
+				return fmt.Errorf("failed to set USE flags for %s: %w", pkg.Name, err)
+			}
+		}
+	}
 
 	args := []string{"emerge", "--ask=n", "--quiet"}
-	args = append(args, packages...)
+	args = append(args, packageNames...)
 
 	progressChan <- InstallProgressMsg{
 		Phase:       PhaseSystemPackages,
@@ -420,15 +430,61 @@ func (g *GentooDistribution) installPortagePackages(ctx context.Context, package
 	return g.runWithProgress(cmd, progressChan, PhaseSystemPackages, 0.40, 0.60)
 }
 
-func (g *GentooDistribution) installGURUPackages(ctx context.Context, packages []string, sudoPassword string, progressChan chan<- InstallProgressMsg) error {
+func (g *GentooDistribution) setPackageUseFlags(ctx context.Context, packageName, useFlags, sudoPassword string) error {
+	packageUseDir := "/etc/portage/package.use"
+
+	mkdirCmd := exec.CommandContext(ctx, "bash", "-c",
+		fmt.Sprintf("echo '%s' | sudo -S mkdir -p %s", sudoPassword, packageUseDir))
+	if output, err := mkdirCmd.CombinedOutput(); err != nil {
+		g.log(fmt.Sprintf("mkdir output: %s", string(output)))
+		return fmt.Errorf("failed to create package.use directory: %w", err)
+	}
+
+	useFlagLine := fmt.Sprintf("%s %s\n", packageName, useFlags)
+
+	appendCmd := exec.CommandContext(ctx, "bash", "-c",
+		fmt.Sprintf("echo '%s' | sudo -S tee -a %s/danklinux > /dev/null", sudoPassword, packageUseDir))
+
+	stdinPipe, err := appendCmd.StdinPipe()
+	if err != nil {
+		return fmt.Errorf("failed to get stdin pipe: %w", err)
+	}
+
+	if err := appendCmd.Start(); err != nil {
+		return fmt.Errorf("failed to start append command: %w", err)
+	}
+
+	if _, err := stdinPipe.Write([]byte(useFlagLine)); err != nil {
+		return fmt.Errorf("failed to write USE flags: %w", err)
+	}
+	stdinPipe.Close()
+
+	if err := appendCmd.Wait(); err != nil {
+		return fmt.Errorf("failed to write USE flags to package.use: %w", err)
+	}
+
+	g.log(fmt.Sprintf("Set USE flags for %s: %s", packageName, useFlags))
+	return nil
+}
+
+func (g *GentooDistribution) installGURUPackages(ctx context.Context, packages []PackageMapping, sudoPassword string, progressChan chan<- InstallProgressMsg) error {
 	if len(packages) == 0 {
 		return nil
 	}
 
-	g.log(fmt.Sprintf("Installing GURU packages: %s", strings.Join(packages, ", ")))
+	packageNames := g.extractPackageNames(packages)
+	g.log(fmt.Sprintf("Installing GURU packages: %s", strings.Join(packageNames, ", ")))
 
-	guruPackages := make([]string, len(packages))
-	for i, pkg := range packages {
+	for _, pkg := range packages {
+		if pkg.UseFlags != "" {
+			if err := g.setPackageUseFlags(ctx, pkg.Name, pkg.UseFlags, sudoPassword); err != nil {
+				return fmt.Errorf("failed to set USE flags for %s: %w", pkg.Name, err)
+			}
+		}
+	}
+
+	guruPackages := make([]string, len(packageNames))
+	for i, pkg := range packageNames {
 		guruPackages[i] = pkg + "::guru"
 	}
 
