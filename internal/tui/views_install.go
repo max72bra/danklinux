@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
 
 // wrapText wraps text to the specified width
@@ -75,7 +76,7 @@ func (m Model) viewInstallingPackages() string {
 			b.WriteString("\n")
 
 			// Show last few lines of accumulated logs
-			maxLines := 8
+			maxLines := 20
 			startIdx := 0
 			if len(m.installationLogs) > maxLines {
 				startIdx = len(m.installationLogs) - maxLines
@@ -178,11 +179,11 @@ func (m Model) viewError() string {
 
 	// Show persistent installation logs
 	if len(m.installationLogs) > 0 {
-		logHeader := m.styles.Warning.Render("Installation Logs (last 15 lines):")
+		logHeader := m.styles.Warning.Render("Installation Logs (last 50 lines):")
 		b.WriteString(logHeader)
 		b.WriteString("\n")
 
-		maxLines := 15
+		maxLines := 50
 		startIdx := 0
 		if len(m.installationLogs) > maxLines {
 			startIdx = len(m.installationLogs) - maxLines
@@ -262,4 +263,54 @@ func (m Model) listenForPackageProgress() tea.Cmd {
 		// Always return the message, completion will be handled in updateInstallingPackagesState
 		return msg
 	}
+}
+
+func (m Model) viewDebugLogs() string {
+	var b strings.Builder
+
+	theme := TerminalTheme()
+
+	titleStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(theme.Primary)).
+		Bold(true)
+
+	b.WriteString(titleStyle.Render("Debug Logs"))
+	b.WriteString("\n\n")
+
+	// Combine both logMessages and installationLogs
+	allLogs := append([]string{}, m.logMessages...)
+	allLogs = append(allLogs, m.installationLogs...)
+
+	if len(allLogs) == 0 {
+		b.WriteString("No logs available\n")
+	} else {
+		// Calculate available height (reserve space for header and footer)
+		maxHeight := m.height - 6
+		if maxHeight < 10 {
+			maxHeight = 10
+		}
+
+		// Show the most recent logs
+		startIdx := 0
+		if len(allLogs) > maxHeight {
+			startIdx = len(allLogs) - maxHeight
+		}
+
+		for i := startIdx; i < len(allLogs); i++ {
+			if allLogs[i] != "" {
+				b.WriteString(fmt.Sprintf("%d: %s\n", i, allLogs[i]))
+			}
+		}
+
+		if startIdx > 0 {
+			subtleStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(theme.Subtle))
+			b.WriteString(subtleStyle.Render(fmt.Sprintf("... (%d older log entries hidden)\n", startIdx)))
+		}
+	}
+
+	b.WriteString("\n")
+	statusStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(theme.Accent))
+	b.WriteString(statusStyle.Render("Press Ctrl+D to return, Ctrl+C to quit"))
+
+	return b.String()
 }

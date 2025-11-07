@@ -28,6 +28,7 @@ type Model struct {
 	packageProgressChan chan packageInstallProgressMsg
 	packageProgress     packageInstallProgressMsg
 	installationLogs    []string
+	showDebugLogs       bool
 
 	selectedWM        int
 	selectedTerminal  int
@@ -73,6 +74,7 @@ func NewModel(version string) Model {
 			step:       "Initializing package installation",
 			isComplete: false,
 		},
+		showDebugLogs:    false,
 		selectedWM:       0,
 		selectedTerminal: 0, // Default to Ghostty
 		selectedDep:      0,
@@ -96,6 +98,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch keyMsg.String() {
 		case "ctrl+c":
 			return m, tea.Quit
+		case "ctrl+d":
+			// Toggle debug logs view (except during password input states)
+			if m.state != StatePasswordPrompt && m.state != StateFingerprintAuth {
+				m.showDebugLogs = !m.showDebugLogs
+				return m, nil
+			}
 		}
 	}
 
@@ -150,6 +158,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) View() string {
+	// If debug logs are shown, show that view regardless of state
+	if m.showDebugLogs {
+		return m.viewDebugLogs()
+	}
+
 	switch m.state {
 	case StateWelcome:
 		return m.viewWelcome()
