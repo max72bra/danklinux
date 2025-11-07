@@ -481,112 +481,48 @@ func (g *GentooDistribution) setPackageUseFlags(ctx context.Context, packageName
 }
 
 func (g *GentooDistribution) syncGURURepo(ctx context.Context, sudoPassword string, progressChan chan<- InstallProgressMsg) error {
-	g.log("========== STARTING syncGURURepo ==========")
+	g.log("Enabling GURU repository...")
 
-	run := func(name string, args ...string) (string, error) {
-		g.log(fmt.Sprintf("RUNNING COMMAND: %s %s", name, strings.Join(args, " ")))
-		cmd := exec.CommandContext(ctx, name, args...)
-		out, err := cmd.CombinedOutput()
-		g.log(fmt.Sprintf("COMMAND OUTPUT: %s", strings.TrimSpace(string(out))))
-		if err != nil {
-			g.log(fmt.Sprintf("COMMAND ERROR: %v", err))
-		}
-		return strings.TrimSpace(string(out)), err
+	progressChan <- InstallProgressMsg{
+		Phase:       PhaseSystemPackages,
+		Progress:    0.55,
+		Step:        "Enabling GURU repository...",
+		IsComplete:  false,
+		NeedsSudo:   true,
+		CommandInfo: "sudo eselect repository enable guru",
 	}
 
-	runSudo := func(name string, args ...string) (string, error) {
-		cmdStr := fmt.Sprintf("%s %s", name, strings.Join(args, " "))
-		g.log(fmt.Sprintf("RUNNING SUDO COMMAND: %s", cmdStr))
-		cmd := exec.CommandContext(ctx, "bash", "-c",
-			fmt.Sprintf("echo '%s' | sudo -S %s", sudoPassword, cmdStr))
-		out, err := cmd.CombinedOutput()
-		g.log(fmt.Sprintf("SUDO COMMAND OUTPUT: %s", strings.TrimSpace(string(out))))
-		if err != nil {
-			g.log(fmt.Sprintf("SUDO COMMAND ERROR: %v", err))
-		}
-		return strings.TrimSpace(string(out)), err
+	// Enable GURU repository
+	enableCmd := exec.CommandContext(ctx, "bash", "-c",
+		fmt.Sprintf("echo '%s' | sudo -S eselect repository enable guru", sudoPassword))
+	output, err := enableCmd.CombinedOutput()
+	if err != nil {
+		g.logError("failed to enable GURU repository", err)
+		g.log(fmt.Sprintf("eselect repository enable output: %s", string(output)))
+		return fmt.Errorf("failed to enable GURU repository: %w", err)
 	}
+	g.log(fmt.Sprintf("GURU repository enabled: %s", string(output)))
 
-	repoPath, err := run("portageq", "get_repo_path", "/", "guru")
-	enabled := err == nil && repoPath != ""
-	if enabled {
-		if st, statErr := os.Stat(repoPath); statErr == nil && st.IsDir() {
-			g.log(fmt.Sprintf("GURU already enabled at %s", repoPath))
-		} else {
-			enabled = false
-		}
-	} else {
-		if out, e := run("eselect", "repository", "list", "-i"); e == nil && strings.Contains(out, "guru") {
-			enabled = true
-			g.log("GURU appears enabled via eselect (list -i).")
-		}
-	}
-
-	if !enabled {
-		g.log("GURU repository not enabled; attempting enable via eselect...")
-		if _, err := runSudo("eselect", "repository", "enable", "guru"); err == nil {
-			g.log("Enabled GURU via eselect.")
-		} else {
-			g.log("eselect-repository not available or failed; writing /etc/portage/repos.conf/guru.conf manually...")
-
-			const reposConfDir = "/etc/portage/repos.conf"
-			const guruConfPath = reposConfDir + "/guru.conf"
-
-			guruConf := `[guru]
-location = /var/db/repos/guru
-sync-type = git
-sync-uri = https://github.com/gentoo-mirror/guru.git
-masters = gentoo
-auto-sync = yes
-`
-
-			mkdirCmd := exec.CommandContext(ctx, "bash", "-c",
-				fmt.Sprintf("echo '%s' | sudo -S mkdir -p %s", sudoPassword, reposConfDir))
-			if output, mkErr := mkdirCmd.CombinedOutput(); mkErr != nil {
-				g.log(fmt.Sprintf("mkdir output: %s", string(output)))
-				return fmt.Errorf("failed to create %s: %w", reposConfDir, mkErr)
-			}
-
-			writeCmd := exec.CommandContext(ctx, "bash", "-c",
-				fmt.Sprintf("echo '%s' | sudo -S bash -c \"cat > %s << 'EOF'\n%s\nEOF\"", sudoPassword, guruConfPath, guruConf))
-			if output, writeErr := writeCmd.CombinedOutput(); writeErr != nil {
-				g.log(fmt.Sprintf("write output: %s", string(output)))
-				return fmt.Errorf("failed to write %s: %w", guruConfPath, writeErr)
-			}
-
-			g.log("Created /etc/portage/repos.conf/guru.conf")
-
-			const loc = "/var/db/repos/guru"
-			mkdirRepoCmd := exec.CommandContext(ctx, "bash", "-c",
-				fmt.Sprintf("echo '%s' | sudo -S mkdir -p %s", sudoPassword, loc))
-			_, _ = mkdirRepoCmd.CombinedOutput()
-		}
+	// Sync GURU repository
+	progressChan <- InstallProgressMsg{
+		Phase:       PhaseSystemPackages,
+		Progress:    0.57,
+		Step:        "Syncing GURU repository...",
+		IsComplete:  false,
+		NeedsSudo:   true,
+		CommandInfo: "sudo emaint sync --repo guru",
 	}
 
 	g.log("Syncing GURU repository...")
-	syncOut, syncErr := runSudo("emaint", "sync", "--repo", "guru")
+	syncCmd := exec.CommandContext(ctx, "bash", "-c",
+		fmt.Sprintf("echo '%s' | sudo -S emaint sync --repo guru", sudoPassword))
+	syncOutput, syncErr := syncCmd.CombinedOutput()
 	if syncErr != nil {
-		g.logError("emaint sync failed; trying emerge --sync --repo guru", syncErr)
-		if _, altErr := runSudo("emerge", "--sync", "--repo", "guru"); altErr != nil {
-			g.logError("emerge --sync --repo guru also failed", altErr)
-			return fmt.Errorf("failed to sync GURU repo: %w", syncErr)
-		}
-	} else {
-		g.log(fmt.Sprintf("GURU repo synced successfully: %s", syncOut))
+		g.logError("failed to sync GURU repository", syncErr)
+		g.log(fmt.Sprintf("emaint sync output: %s", string(syncOutput)))
+		return fmt.Errorf("failed to sync GURU repository: %w", syncErr)
 	}
-
-	repoPath, err = run("portageq", "get_repo_path", "/", "guru")
-	if err != nil || repoPath == "" {
-		repoPath = "/var/db/repos/guru"
-	}
-
-	niriPath := filepath.Join(repoPath, "gui-wm", "niri")
-	if st, statErr := os.Stat(niriPath); statErr == nil && st.IsDir() {
-		g.log(fmt.Sprintf("Verified niri ebuilds exist at %s", niriPath))
-	} else {
-		lsOut, _ := run("bash", "-c", fmt.Sprintf("ls -la %q || true", niriPath))
-		g.log(fmt.Sprintf("WARNING: Could not verify niri ebuilds at %s\nls output:\n%s", niriPath, lsOut))
-	}
+	g.log(fmt.Sprintf("GURU repository synced: %s", string(syncOutput)))
 
 	return nil
 }
