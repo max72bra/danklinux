@@ -54,27 +54,17 @@ func (m Model) viewGentooUseFlags() string {
 }
 
 func (m Model) updateGentooUseFlagsState(msg tea.Msg) (tea.Model, tea.Cmd) {
-	if useFlagsMsg, ok := msg.(gentooUseFlagsSetMsg); ok {
-		if useFlagsMsg.err != nil {
-			m.err = useFlagsMsg.err
-			m.state = StateError
-			return m, nil
-		}
-		// Continue to auth method choice
-		if checkFingerprintEnabled() {
-			m.state = StateAuthMethodChoice
-			m.selectedConfig = 0
-		} else {
-			m.state = StatePasswordPrompt
-			m.passwordInput.Focus()
-		}
-		return m, nil
-	}
-
 	if keyMsg, ok := msg.(tea.KeyMsg); ok {
 		switch keyMsg.String() {
 		case "enter":
-			return m, m.setGentooGlobalUseFlags()
+			if checkFingerprintEnabled() {
+				m.state = StateAuthMethodChoice
+				m.selectedConfig = 0
+			} else {
+				m.state = StatePasswordPrompt
+				m.passwordInput.Focus()
+			}
+			return m, nil
 		case "esc":
 			m.state = StateDependencyReview
 			return m, nil

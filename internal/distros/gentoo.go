@@ -232,9 +232,47 @@ func (g *GentooDistribution) getPrerequisites() []string {
 	}
 }
 
+func (g *GentooDistribution) setGlobalUseFlags(ctx context.Context, sudoPassword string) error {
+	useFlags := "wayland vulkan opengl accessibility policykit X"
+
+	checkCmd := exec.CommandContext(ctx, "grep", "-q", "^USE=", "/etc/portage/make.conf")
+	hasUse := checkCmd.Run() == nil
+
+	var cmd *exec.Cmd
+	if hasUse {
+		cmdStr := fmt.Sprintf("echo '%s' | sudo -S sed -i 's/^USE=\"\\(.*\\)\"/USE=\"\\1 %s\"/' /etc/portage/make.conf; exit_code=$?; exit $exit_code", sudoPassword, useFlags)
+		cmd = exec.CommandContext(ctx, "bash", "-c", cmdStr)
+	} else {
+		cmdStr := fmt.Sprintf("echo '%s' | sudo -S bash -c \"echo 'USE=\\\"%s\\\"' >> /etc/portage/make.conf\"; exit_code=$?; exit $exit_code", sudoPassword, useFlags)
+		cmd = exec.CommandContext(ctx, "bash", "-c", cmdStr)
+	}
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		g.log(fmt.Sprintf("Failed to set global USE flags: %s", string(output)))
+		return err
+	}
+
+	g.log(fmt.Sprintf("Set global USE flags: %s", useFlags))
+	return nil
+}
+
 func (g *GentooDistribution) InstallPrerequisites(ctx context.Context, sudoPassword string, progressChan chan<- InstallProgressMsg) error {
 	prerequisites := g.getPrerequisites()
 	var missingPkgs []string
+
+	progressChan <- InstallProgressMsg{
+		Phase:      PhasePrerequisites,
+		Progress:   0.05,
+		Step:       "Setting global USE flags...",
+		IsComplete: false,
+		LogOutput:  "Configuring global USE flags in /etc/portage/make.conf",
+	}
+
+	if err := g.setGlobalUseFlags(ctx, sudoPassword); err != nil {
+		g.logError("failed to set global USE flags", err)
+		return fmt.Errorf("failed to set global USE flags: %w", err)
+	}
 
 	progressChan <- InstallProgressMsg{
 		Phase:      PhasePrerequisites,
