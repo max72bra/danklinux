@@ -308,6 +308,17 @@ func (g *GentooDistribution) InstallPackages(ctx context.Context, dependencies [
 	}
 
 	if len(guruPkgs) > 0 {
+		progressChan <- InstallProgressMsg{
+			Phase:      PhaseAURPackages,
+			Progress:   0.60,
+			Step:       "Syncing GURU repository...",
+			IsComplete: false,
+			LogOutput:  "Syncing GURU repository to fetch latest ebuilds",
+		}
+		if err := g.syncGURURepo(ctx, progressChan); err != nil {
+			return fmt.Errorf("failed to sync GURU repository: %w", err)
+		}
+
 		guruPkgNames := g.extractPackageNames(guruPkgs)
 		progressChan <- InstallProgressMsg{
 			Phase:      PhaseAURPackages,
@@ -460,7 +471,28 @@ func (g *GentooDistribution) setPackageUseFlags(ctx context.Context, packageName
 	return nil
 }
 
+func (g *GentooDistribution) syncGURURepo(ctx context.Context, progressChan chan<- InstallProgressMsg) error {
+	g.log("Syncing GURU repository...")
+
+	cmd := exec.CommandContext(ctx, "emaint", "sync", "-r", "guru")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		g.logError("failed to sync GURU repo", err)
+		g.log(fmt.Sprintf("GURU sync command output: %s", string(output)))
+		return fmt.Errorf("failed to sync GURU repo: %w", err)
+	}
+	g.log(fmt.Sprintf("GURU repo synced successfully: %s", string(output)))
+
+	return nil
+}
+
 func (g *GentooDistribution) setPackageAcceptKeywords(ctx context.Context, packageName, keywords, sudoPassword string) error {
+	checkCmd := exec.CommandContext(ctx, "portageq", "match", "/", packageName)
+	if output, err := checkCmd.CombinedOutput(); err == nil && len(output) > 0 {
+		g.log(fmt.Sprintf("Package %s is already available (may already be unmasked)", packageName))
+		return nil
+	}
+
 	acceptKeywordsDir := "/etc/portage/package.accept_keywords"
 
 	mkdirCmd := exec.CommandContext(ctx, "bash", "-c",
@@ -471,6 +503,13 @@ func (g *GentooDistribution) setPackageAcceptKeywords(ctx context.Context, packa
 	}
 
 	keywordLine := fmt.Sprintf("%s %s", packageName, keywords)
+
+	checkExistingCmd := exec.CommandContext(ctx, "bash", "-c",
+		fmt.Sprintf("grep -q '^%s ' %s/danklinux 2>/dev/null", packageName, acceptKeywordsDir))
+	if checkExistingCmd.Run() == nil {
+		g.log(fmt.Sprintf("Accept keywords already set for %s", packageName))
+		return nil
+	}
 
 	appendCmd := exec.CommandContext(ctx, "bash", "-c",
 		fmt.Sprintf("echo '%s' | sudo -S bash -c \"echo '%s' >> %s/danklinux\"", sudoPassword, keywordLine, acceptKeywordsDir))
