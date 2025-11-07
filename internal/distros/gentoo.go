@@ -204,10 +204,8 @@ func (g *GentooDistribution) getHyprpickerMapping(_ deps.PackageVariant) Package
 }
 
 func (g *GentooDistribution) getNiriMapping(variant deps.PackageVariant) PackageMapping {
-	if variant == deps.VariantGit {
-		return PackageMapping{Name: "gui-wm/niri", Repository: RepoTypeGURU, UseFlags: "dbus screencast", AcceptKeywords: "~amd64"}
-	}
-	return PackageMapping{Name: "gui-wm/niri", Repository: RepoTypeSystem, UseFlags: "dbus screencast", AcceptKeywords: "~amd64"}
+	// Niri is only available in GURU, not in the main Gentoo repository
+	return PackageMapping{Name: "gui-wm/niri", Repository: RepoTypeGURU, UseFlags: "dbus screencast", AcceptKeywords: "~amd64"}
 }
 
 func (g *GentooDistribution) getPrerequisites() []string {
