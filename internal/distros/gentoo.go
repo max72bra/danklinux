@@ -212,7 +212,6 @@ func (g *GentooDistribution) getNiriMapping(variant deps.PackageVariant) Package
 
 func (g *GentooDistribution) getPrerequisites() []string {
 	return []string{
-		"app-eselect/eselect-repository",
 		"dev-vcs/git",
 		"dev-build/make",
 		"app-arch/unzip",
@@ -292,19 +291,6 @@ func (g *GentooDistribution) InstallPackages(ctx context.Context, dependencies [
 	}
 
 	systemPkgs, guruPkgs, manualPkgs := g.categorizePackages(dependencies, wm, reinstallFlags)
-
-	if len(guruPkgs) > 0 {
-		progressChan <- InstallProgressMsg{
-			Phase:      PhaseSystemPackages,
-			Progress:   0.15,
-			Step:       "Enabling GURU repository...",
-			IsComplete: false,
-			LogOutput:  "Setting up GURU repository for additional packages",
-		}
-		if err := g.enableGURURepo(ctx, sudoPassword, progressChan); err != nil {
-			return fmt.Errorf("failed to enable GURU repository: %w", err)
-		}
-	}
 
 	if len(systemPkgs) > 0 {
 		progressChan <- InstallProgressMsg{
@@ -410,59 +396,6 @@ func (g *GentooDistribution) extractPackageNames(packages []PackageMapping) []st
 	return names
 }
 
-func (g *GentooDistribution) enableGURURepo(ctx context.Context, sudoPassword string, progressChan chan<- InstallProgressMsg) error {
-	checkCmd := exec.CommandContext(ctx, "eselect", "repository", "list", "-i")
-	output, err := checkCmd.Output()
-	if err != nil {
-		return fmt.Errorf("failed to check GURU repository status: %w", err)
-	}
-
-	if strings.Contains(string(output), "guru") {
-		g.log("GURU repository already enabled")
-		return nil
-	}
-
-	g.log("Enabling GURU repository...")
-	progressChan <- InstallProgressMsg{
-		Phase:       PhaseSystemPackages,
-		Progress:    0.20,
-		Step:        "Enabling GURU repo...",
-		IsComplete:  false,
-		NeedsSudo:   true,
-		CommandInfo: "sudo eselect repository enable guru",
-	}
-
-	cmd := exec.CommandContext(ctx, "bash", "-c",
-		fmt.Sprintf("echo '%s' | sudo -S eselect repository enable guru 2>&1", sudoPassword))
-	enableOutput, err := cmd.CombinedOutput()
-	if err != nil {
-		g.logError("failed to enable GURU repo", err)
-		g.log(fmt.Sprintf("GURU enable command output: %s", string(enableOutput)))
-		return fmt.Errorf("failed to enable GURU repo: %w", err)
-	}
-	g.log(fmt.Sprintf("GURU repo enabled successfully: %s", string(enableOutput)))
-
-	g.log("Syncing GURU repository...")
-	progressChan <- InstallProgressMsg{
-		Phase:       PhaseSystemPackages,
-		Progress:    0.25,
-		Step:        "Syncing GURU repo...",
-		IsComplete:  false,
-		CommandInfo: "emaint sync -r guru",
-	}
-
-	syncCmd := exec.CommandContext(ctx, "emaint", "sync", "-r", "guru")
-	syncOutput, err := syncCmd.CombinedOutput()
-	if err != nil {
-		g.logError("failed to sync GURU repo", err)
-		g.log(fmt.Sprintf("GURU sync command output: %s", string(syncOutput)))
-		return fmt.Errorf("failed to sync GURU repo: %w", err)
-	}
-	g.log(fmt.Sprintf("GURU repo synced successfully: %s", string(syncOutput)))
-
-	return nil
-}
-
 func (g *GentooDistribution) installPortagePackages(ctx context.Context, packages []string, sudoPassword string, progressChan chan<- InstallProgressMsg) error {
 	if len(packages) == 0 {
 		return nil
@@ -494,8 +427,13 @@ func (g *GentooDistribution) installGURUPackages(ctx context.Context, packages [
 
 	g.log(fmt.Sprintf("Installing GURU packages: %s", strings.Join(packages, ", ")))
 
+	guruPackages := make([]string, len(packages))
+	for i, pkg := range packages {
+		guruPackages[i] = pkg + "::guru"
+	}
+
 	args := []string{"emerge", "--ask=n", "--quiet"}
-	args = append(args, packages...)
+	args = append(args, guruPackages...)
 
 	progressChan <- InstallProgressMsg{
 		Phase:       PhaseAURPackages,
