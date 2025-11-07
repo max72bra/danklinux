@@ -3,7 +3,9 @@ package distros
 import (
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"github.com/AvengeMedia/danklinux/internal/deps"
@@ -473,57 +475,86 @@ func (g *GentooDistribution) setPackageUseFlags(ctx context.Context, packageName
 }
 
 func (g *GentooDistribution) syncGURURepo(ctx context.Context, progressChan chan<- InstallProgressMsg) error {
-	checkCmd := exec.CommandContext(ctx, "eselect", "repository", "list", "-i")
-	output, err := checkCmd.Output()
-	if err != nil {
-		g.log(fmt.Sprintf("Warning: Could not check enabled repositories: %v", err))
+	run := func(name string, args ...string) (string, error) {
+		cmd := exec.CommandContext(ctx, name, args...)
+		out, err := cmd.CombinedOutput()
+		return strings.TrimSpace(string(out)), err
 	}
 
-	if !strings.Contains(string(output), "guru") {
-		g.log("GURU repository not enabled, adding repos.conf entry manually...")
-
-		reposConfDir := "/etc/portage/repos.conf"
-		guruConfPath := reposConfDir + "/guru.conf"
-
-		mkdirCmd := exec.CommandContext(ctx, "mkdir", "-p", reposConfDir)
-		if mkdirOutput, err := mkdirCmd.CombinedOutput(); err != nil {
-			g.log(fmt.Sprintf("mkdir output: %s", string(mkdirOutput)))
-			return fmt.Errorf("failed to create repos.conf directory: %w", err)
+	repoPath, err := run("portageq", "get_repo_path", "/", "guru")
+	enabled := err == nil && repoPath != ""
+	if enabled {
+		if st, statErr := os.Stat(repoPath); statErr == nil && st.IsDir() {
+			g.log(fmt.Sprintf("GURU already enabled at %s", repoPath))
+		} else {
+			enabled = false
 		}
+	} else {
+		if out, e := run("eselect", "repository", "list", "-i"); e == nil && strings.Contains(out, "guru") {
+			enabled = true
+			g.log("GURU appears enabled via eselect (list -i).")
+		}
+	}
 
-		guruConf := `[guru]
+	if !enabled {
+		g.log("GURU repository not enabled; attempting enable via eselect...")
+		if _, err := run("eselect", "repository", "enable", "guru"); err == nil {
+			g.log("Enabled GURU via eselect.")
+		} else {
+			g.log("eselect-repository not available or failed; writing /etc/portage/repos.conf/guru.conf manually...")
+
+			const reposConfDir = "/etc/portage/repos.conf"
+			const guruConfPath = reposConfDir + "/guru.conf"
+
+			if mkErr := os.MkdirAll(reposConfDir, 0o755); mkErr != nil {
+				return fmt.Errorf("failed to create %s: %w", reposConfDir, mkErr)
+			}
+
+			guruConf := `[guru]
 location = /var/db/repos/guru
 sync-type = git
 sync-uri = https://github.com/gentoo-mirror/guru.git
+masters = gentoo
+auto-sync = yes
 `
 
-		writeCmd := exec.CommandContext(ctx, "bash", "-c",
-			fmt.Sprintf("cat > %s << 'EOF'\n%sEOF", guruConfPath, guruConf))
-		if writeOutput, err := writeCmd.CombinedOutput(); err != nil {
-			g.log(fmt.Sprintf("write guru.conf output: %s", string(writeOutput)))
-			return fmt.Errorf("failed to write guru.conf: %w", err)
+			if writeErr := os.WriteFile(guruConfPath, []byte(guruConf), 0o644); writeErr != nil {
+				return fmt.Errorf("failed to write %s: %w", guruConfPath, writeErr)
+			}
+			_ = os.Chown(guruConfPath, 0, 0)
+
+			g.log("Created /etc/portage/repos.conf/guru.conf")
+
+			const loc = "/var/db/repos/guru"
+			if err := os.MkdirAll(loc, 0o755); err == nil {
+				_ = os.Chown(loc, 0, 0)
+			}
 		}
-		g.log("Created /etc/portage/repos.conf/guru.conf")
-	} else {
-		g.log("GURU repository already enabled")
 	}
 
 	g.log("Syncing GURU repository...")
-	cmd := exec.CommandContext(ctx, "emaint", "sync", "--repo", "guru")
-	syncOutput, err := cmd.CombinedOutput()
-	if err != nil {
-		g.logError("failed to sync GURU repo", err)
-		g.log(fmt.Sprintf("GURU sync command output: %s", string(syncOutput)))
-		return fmt.Errorf("failed to sync GURU repo: %w", err)
-	}
-	g.log(fmt.Sprintf("GURU repo synced successfully: %s", string(syncOutput)))
-
-	verifyCmd := exec.CommandContext(ctx, "ls", "-la", "/var/db/repos/guru/gui-wm/niri")
-	verifyOutput, verifyErr := verifyCmd.CombinedOutput()
-	if verifyErr != nil {
-		g.log(fmt.Sprintf("WARNING: Could not verify niri ebuilds exist: %s", string(verifyOutput)))
+	syncOut, syncErr := run("emaint", "sync", "--repo", "guru")
+	if syncErr != nil {
+		g.logError("emaint sync failed; trying emerge --sync guru", syncErr)
+		if _, altErr := run("emerge", "--sync", "guru"); altErr != nil {
+			g.logError("emerge --sync guru also failed", altErr)
+			return fmt.Errorf("failed to sync GURU repo: %w", syncErr)
+		}
 	} else {
-		g.log(fmt.Sprintf("Verified niri ebuilds exist: %s", string(verifyOutput)))
+		g.log(fmt.Sprintf("GURU repo synced successfully: %s", syncOut))
+	}
+
+	repoPath, err = run("portageq", "get_repo_path", "/", "guru")
+	if err != nil || repoPath == "" {
+		repoPath = "/var/db/repos/guru"
+	}
+
+	niriPath := filepath.Join(repoPath, "gui-wm", "niri")
+	if st, statErr := os.Stat(niriPath); statErr == nil && st.IsDir() {
+		g.log(fmt.Sprintf("Verified niri ebuilds exist at %s", niriPath))
+	} else {
+		lsOut, _ := run("bash", "-c", fmt.Sprintf("ls -la %q || true", niriPath))
+		g.log(fmt.Sprintf("WARNING: Could not verify niri ebuilds at %s\nls output:\n%s", niriPath, lsOut))
 	}
 
 	return nil
