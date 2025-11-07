@@ -410,7 +410,7 @@ func (b *BaseDistribution) versionCompare(v1, v2 string) int {
 
 // Common installation helper
 func (b *BaseDistribution) runWithProgress(cmd *exec.Cmd, progressChan chan<- InstallProgressMsg, phase InstallPhase, startProgress, endProgress float64) error {
-	return b.runWithProgressTimeout(cmd, progressChan, phase, startProgress, endProgress, 10*time.Minute)
+	return b.runWithProgressTimeout(cmd, progressChan, phase, startProgress, endProgress, 20*time.Minute)
 }
 
 func (b *BaseDistribution) runWithProgressTimeout(cmd *exec.Cmd, progressChan chan<- InstallProgressMsg, phase InstallPhase, startProgress, endProgress float64, timeout time.Duration) error {
@@ -418,7 +418,7 @@ func (b *BaseDistribution) runWithProgressTimeout(cmd *exec.Cmd, progressChan ch
 }
 
 func (b *BaseDistribution) runWithProgressStep(cmd *exec.Cmd, progressChan chan<- InstallProgressMsg, phase InstallPhase, startProgress, endProgress float64, stepMessage string) error {
-	return b.runWithProgressStepTimeout(cmd, progressChan, phase, startProgress, endProgress, stepMessage, 10*time.Minute)
+	return b.runWithProgressStepTimeout(cmd, progressChan, phase, startProgress, endProgress, stepMessage, 20*time.Minute)
 }
 
 func (b *BaseDistribution) runWithProgressStepTimeout(cmd *exec.Cmd, progressChan chan<- InstallProgressMsg, phase InstallPhase, startProgress, endProgress float64, stepMessage string, timeoutDuration time.Duration) error {
@@ -467,8 +467,14 @@ func (b *BaseDistribution) runWithProgressStepTimeout(cmd *exec.Cmd, progressCha
 	progress := startProgress
 	progressStep := (endProgress - startProgress) / 50
 	lastOutput := ""
-	timeout := time.NewTimer(timeoutDuration)
-	defer timeout.Stop()
+
+	var timeout *time.Timer
+	var timeoutChan <-chan time.Time
+	if timeoutDuration > 0 {
+		timeout = time.NewTimer(timeoutDuration)
+		defer timeout.Stop()
+		timeoutChan = timeout.C
+	}
 
 	for {
 		select {
@@ -504,9 +510,11 @@ func (b *BaseDistribution) runWithProgressStepTimeout(cmd *exec.Cmd, progressCha
 					IsComplete: false,
 					LogOutput:  output,
 				}
-				timeout.Reset(timeoutDuration)
+				if timeout != nil {
+					timeout.Reset(timeoutDuration)
+				}
 			}
-		case <-timeout.C:
+		case <-timeoutChan:
 			if cmd.Process != nil {
 				cmd.Process.Kill()
 			}
