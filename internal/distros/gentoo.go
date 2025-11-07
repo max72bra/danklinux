@@ -196,11 +196,7 @@ func (g *GentooDistribution) GetPackageMappingWithVariants(wm deps.WindowManager
 }
 
 func (g *GentooDistribution) getQuickshellMapping(variant deps.PackageVariant) PackageMapping {
-	archKeyword := g.getArchKeyword()
-	if forceQuickshellGit || variant == deps.VariantGit {
-		return PackageMapping{Name: "gui-apps/quickshell", Repository: RepoTypeGURU, UseFlags: "-breakpad jemalloc sockets wayland layer-shell session-lock toplevel-management screencopy X pipewire tray mpris pam hyprland hyprland-global-shortcuts hyprland-focus-grab i3 i3-ipc bluetooth", AcceptKeywords: archKeyword}
-	}
-	return PackageMapping{Name: "gui-apps/quickshell", Repository: RepoTypeGURU, UseFlags: "-breakpad jemalloc sockets wayland layer-shell session-lock toplevel-management screencopy X pipewire tray mpris pam hyprland hyprland-global-shortcuts hyprland-focus-grab i3 i3-ipc bluetooth", AcceptKeywords: archKeyword}
+	return PackageMapping{Name: "gui-apps/quickshell", Repository: RepoTypeGURU, UseFlags: "-breakpad jemalloc sockets wayland layer-shell session-lock toplevel-management screencopy X pipewire tray mpris pam hyprland hyprland-global-shortcuts hyprland-focus-grab i3 i3-ipc bluetooth", AcceptKeywords: "**"}
 }
 
 func (g *GentooDistribution) getDmsMapping(_ deps.PackageVariant) PackageMapping {
