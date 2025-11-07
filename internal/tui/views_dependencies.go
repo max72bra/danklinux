@@ -148,6 +148,13 @@ func (m Model) updateDependencyReviewState(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		case "enter":
+			// Check if on Gentoo - show USE flags screen
+			if m.osInfo != nil {
+				if config, exists := distros.Registry[m.osInfo.Distribution.ID]; exists && config.Family == distros.FamilyGentoo {
+					m.state = StateGentooUseFlags
+					return m, nil
+				}
+			}
 			// Check if fingerprint is enabled
 			if checkFingerprintEnabled() {
 				m.state = StateAuthMethodChoice

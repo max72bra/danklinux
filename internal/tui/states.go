@@ -9,6 +9,7 @@ const (
 	StateMissingWMInstructions
 	StateDetectingDeps
 	StateDependencyReview
+	StateGentooUseFlags
 	StateAuthMethodChoice
 	StateFingerprintAuth
 	StatePasswordPrompt

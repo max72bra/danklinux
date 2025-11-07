@@ -226,6 +226,9 @@ func (g *GentooDistribution) getPrerequisites() []string {
 		"dev-build/make",
 		"app-arch/unzip",
 		"dev-util/pkgconf",
+		"dev-qt/qtbase",
+		"dev-qt/qtdeclarative",
+		"dev-qt/qtwayland",
 	}
 }
 
@@ -239,28 +242,6 @@ func (g *GentooDistribution) InstallPrerequisites(ctx context.Context, sudoPassw
 		Step:       "Checking prerequisites...",
 		IsComplete: false,
 		LogOutput:  "Checking prerequisite packages",
-	}
-
-	systemUseFlags := map[string]string{
-		"sys-apps/systemd":      "policykit",
-		"x11-libs/cairo":        "X",
-		"media-libs/libglvnd":   "X",
-		"media-libs/freetype":   "harfbuzz",
-		"x11-libs/gtk+":         "wayland",
-		"gui-libs/gtk":          "wayland",
-		"media-libs/mesa":       "wayland",
-		"dev-python/pycairo":    "X",
-		"app-text/xmlto":        "text",
-		"dev-qt/qtbase":         "opengl wayland",
-		"dev-qt/qtdeclarative":  "opengl",
-		"x11-libs/libxkbcommon": "X",
-		"dev-qt/qttools":        "opengl",
-	}
-
-	for pkg, flags := range systemUseFlags {
-		if err := g.setPackageUseFlags(ctx, pkg, flags, sudoPassword); err != nil {
-			return fmt.Errorf("failed to set USE flags for %s: %w", pkg, err)
-		}
 	}
 
 	for _, pkg := range prerequisites {
