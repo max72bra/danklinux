@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os/exec"
+	"runtime"
 	"strings"
 
 	"github.com/AvengeMedia/danklinux/internal/deps"
@@ -27,6 +28,18 @@ func NewGentooDistribution(config DistroConfig, logChan chan<- string) *GentooDi
 		BaseDistribution:       base,
 		ManualPackageInstaller: &ManualPackageInstaller{BaseDistribution: base},
 		config:                 config,
+	}
+}
+
+func (g *GentooDistribution) getArchKeyword() string {
+	arch := runtime.GOARCH
+	switch arch {
+	case "amd64":
+		return "~amd64"
+	case "arm64":
+		return "~arm64"
+	default:
+		return "~amd64"
 	}
 }
 
@@ -147,9 +160,10 @@ func (g *GentooDistribution) GetPackageMapping(wm deps.WindowManager) map[string
 }
 
 func (g *GentooDistribution) GetPackageMappingWithVariants(wm deps.WindowManager, variants map[string]deps.PackageVariant) map[string]PackageMapping {
+	archKeyword := g.getArchKeyword()
 	packages := map[string]PackageMapping{
 		"git":                    {Name: "dev-vcs/git", Repository: RepoTypeSystem},
-		"ghostty":                {Name: "x11-terms/ghostty", Repository: RepoTypeSystem, UseFlags: "X wayland", AcceptKeywords: "~amd64"},
+		"ghostty":                {Name: "x11-terms/ghostty", Repository: RepoTypeSystem, UseFlags: "X wayland", AcceptKeywords: archKeyword},
 		"kitty":                  {Name: "x11-terms/kitty", Repository: RepoTypeSystem, UseFlags: "X wayland"},
 		"alacritty":              {Name: "x11-terms/alacritty", Repository: RepoTypeSystem, UseFlags: "X wayland"},
 		"wl-clipboard":           {Name: "gui-apps/wl-clipboard", Repository: RepoTypeSystem},
@@ -159,8 +173,8 @@ func (g *GentooDistribution) GetPackageMappingWithVariants(wm deps.WindowManager
 		"hyprpicker":             g.getHyprpickerMapping(variants["hyprland"]),
 
 		"quickshell":              g.getQuickshellMapping(variants["quickshell"]),
-		"matugen":                 {Name: "x11-misc/matugen", Repository: RepoTypeGURU, AcceptKeywords: "~amd64"},
-		"cliphist":                {Name: "app-misc/cliphist", Repository: RepoTypeGURU, AcceptKeywords: "~amd64"},
+		"matugen":                 {Name: "x11-misc/matugen", Repository: RepoTypeGURU, AcceptKeywords: archKeyword},
+		"cliphist":                {Name: "app-misc/cliphist", Repository: RepoTypeGURU, AcceptKeywords: archKeyword},
 		"dms (DankMaterialShell)": g.getDmsMapping(variants["dms (DankMaterialShell)"]),
 		"dgop":                    {Name: "dgop", Repository: RepoTypeManual, BuildFunc: "installDgop"},
 	}
@@ -182,10 +196,11 @@ func (g *GentooDistribution) GetPackageMappingWithVariants(wm deps.WindowManager
 }
 
 func (g *GentooDistribution) getQuickshellMapping(variant deps.PackageVariant) PackageMapping {
+	archKeyword := g.getArchKeyword()
 	if forceQuickshellGit || variant == deps.VariantGit {
-		return PackageMapping{Name: "gui-apps/quickshell", Repository: RepoTypeGURU, UseFlags: "-breakpad jemalloc sockets wayland layer-shell session-lock toplevel-management screencopy X pipewire tray mpris pam hyprland hyprland-global-shortcuts hyprland-focus-grab i3 i3-ipc bluetooth", AcceptKeywords: "~amd64"}
+		return PackageMapping{Name: "gui-apps/quickshell", Repository: RepoTypeGURU, UseFlags: "-breakpad jemalloc sockets wayland layer-shell session-lock toplevel-management screencopy X pipewire tray mpris pam hyprland hyprland-global-shortcuts hyprland-focus-grab i3 i3-ipc bluetooth", AcceptKeywords: archKeyword}
 	}
-	return PackageMapping{Name: "gui-apps/quickshell", Repository: RepoTypeGURU, UseFlags: "-breakpad jemalloc sockets wayland layer-shell session-lock toplevel-management screencopy X pipewire tray mpris pam hyprland hyprland-global-shortcuts hyprland-focus-grab i3 i3-ipc bluetooth", AcceptKeywords: "~amd64"}
+	return PackageMapping{Name: "gui-apps/quickshell", Repository: RepoTypeGURU, UseFlags: "-breakpad jemalloc sockets wayland layer-shell session-lock toplevel-management screencopy X pipewire tray mpris pam hyprland hyprland-global-shortcuts hyprland-focus-grab i3 i3-ipc bluetooth", AcceptKeywords: archKeyword}
 }
 
 func (g *GentooDistribution) getDmsMapping(_ deps.PackageVariant) PackageMapping {
@@ -193,19 +208,19 @@ func (g *GentooDistribution) getDmsMapping(_ deps.PackageVariant) PackageMapping
 }
 
 func (g *GentooDistribution) getHyprlandMapping(variant deps.PackageVariant) PackageMapping {
+	archKeyword := g.getArchKeyword()
 	if variant == deps.VariantGit {
-		return PackageMapping{Name: "gui-wm/hyprland", Repository: RepoTypeGURU, UseFlags: "X", AcceptKeywords: "~amd64"}
+		return PackageMapping{Name: "gui-wm/hyprland", Repository: RepoTypeGURU, UseFlags: "X", AcceptKeywords: archKeyword}
 	}
-	return PackageMapping{Name: "gui-wm/hyprland", Repository: RepoTypeSystem, UseFlags: "X", AcceptKeywords: "~amd64"}
+	return PackageMapping{Name: "gui-wm/hyprland", Repository: RepoTypeSystem, UseFlags: "X", AcceptKeywords: archKeyword}
 }
 
 func (g *GentooDistribution) getHyprpickerMapping(_ deps.PackageVariant) PackageMapping {
-	return PackageMapping{Name: "gui-apps/hyprpicker", Repository: RepoTypeGURU, AcceptKeywords: "~amd64"}
+	return PackageMapping{Name: "gui-apps/hyprpicker", Repository: RepoTypeGURU, AcceptKeywords: g.getArchKeyword()}
 }
 
 func (g *GentooDistribution) getNiriMapping(variant deps.PackageVariant) PackageMapping {
-	// Niri is only available in GURU, not in the main Gentoo repository
-	return PackageMapping{Name: "gui-wm/niri", Repository: RepoTypeGURU, UseFlags: "dbus screencast", AcceptKeywords: "~amd64"}
+	return PackageMapping{Name: "gui-wm/niri", Repository: RepoTypeGURU, UseFlags: "dbus screencast", AcceptKeywords: g.getArchKeyword()}
 }
 
 func (g *GentooDistribution) getPrerequisites() []string {
@@ -231,14 +246,18 @@ func (g *GentooDistribution) InstallPrerequisites(ctx context.Context, sudoPassw
 	}
 
 	systemUseFlags := map[string]string{
-		"sys-apps/systemd":    "policykit",
-		"x11-libs/cairo":      "X",
-		"media-libs/libglvnd": "X",
-		"media-libs/freetype": "harfbuzz",
-		"x11-libs/gtk+":       "wayland",
-		"gui-libs/gtk":        "wayland",
-		"media-libs/mesa":     "wayland",
-		"dev-python/pycairo":  "X",
+		"sys-apps/systemd":      "policykit",
+		"x11-libs/cairo":        "X",
+		"media-libs/libglvnd":   "X",
+		"media-libs/freetype":   "harfbuzz",
+		"x11-libs/gtk+":         "wayland",
+		"gui-libs/gtk":          "wayland",
+		"media-libs/mesa":       "wayland",
+		"dev-python/pycairo":    "X",
+		"app-text/xmlto":        "text",
+		"dev-qt/qtbase":         "opengl wayland",
+		"x11-libs/libxkbcommon": "X",
+		"dev-qt/qttools":        "opengl",
 	}
 
 	for pkg, flags := range systemUseFlags {
@@ -535,10 +554,11 @@ func (g *GentooDistribution) syncGURURepo(ctx context.Context, sudoPassword stri
 		fmt.Sprintf("echo '%s' | sudo -S eselect repository enable guru 2>&1; exit_code=$?; exit $exit_code", sudoPassword))
 	output, err := enableCmd.CombinedOutput()
 
+	g.log(fmt.Sprintf("eselect repository enable guru output:\n%s", string(output)))
 	progressChan <- InstallProgressMsg{
 		Phase:     PhaseSystemPackages,
 		Progress:  0.55,
-		LogOutput: fmt.Sprintf("eselect repository enable guru output:\n%s", string(output)),
+		LogOutput: "GURU repository enabled",
 	}
 
 	if err != nil {
@@ -566,10 +586,11 @@ func (g *GentooDistribution) syncGURURepo(ctx context.Context, sudoPassword stri
 		fmt.Sprintf("echo '%s' | sudo -S emaint sync --repo guru 2>&1; exit_code=$?; exit $exit_code", sudoPassword))
 	syncOutput, syncErr := syncCmd.CombinedOutput()
 
+	g.log(fmt.Sprintf("emaint sync --repo guru output:\n%s", string(syncOutput)))
 	progressChan <- InstallProgressMsg{
 		Phase:     PhaseSystemPackages,
 		Progress:  0.57,
-		LogOutput: fmt.Sprintf("emaint sync --repo guru output:\n%s", string(syncOutput)),
+		LogOutput: "GURU repository synced",
 	}
 
 	if syncErr != nil {

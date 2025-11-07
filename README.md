@@ -230,6 +230,45 @@ curl -fsSL https://install.danklinux.com | sh
 | dgop | Manual | Built from source with Go |
 | DankMaterialShell | Manual | Git clone to `~/.config/quickshell/dms` |
 
+### Gentoo
+
+**Special Notes:**
+- Uses Portage package manager with GURU overlay for additional packages
+- Automatically configures USE flags for all dependencies
+  - `/etc/portage/package.use/danklinux`
+- Unmasks some packages as-needed
+  - `/etc/portage/package.accept_keywords/danklinux`
+- If not using bin packages, prepare for long compilation times.
+
+**Package Sources:**
+| Package | Source | Notes |
+|---------|---------|-------|
+| System packages (git, etc.) | Official repos | Via `emerge` |
+| ghostty | Official repos | With X and wayland USE flags |
+| niri | GURU overlay | With dbus and screencast USE flags |
+| hyprland | GURU/Official | Depends on variant selection |
+| quickshell | GURU overlay | Full feature set enabled |
+| matugen | GURU overlay | Color generation tool |
+| cliphist | GURU overlay | Clipboard manager |
+| xdg-desktop-portal-gtk | Official repos | With wayland and X USE flags |
+| dgop | Manual | Built from source with Go |
+| xwayland-satellite | Manual | For niri X11 app support |
+| DankMaterialShell | Manual | Git clone to `~/.config/quickshell/dms` |
+
+**System USE Flags Configured:**
+- `sys-apps/systemd`: policykit
+- `x11-libs/cairo`: X
+- `media-libs/libglvnd`: X
+- `media-libs/freetype`: harfbuzz
+- `x11-libs/gtk+`: wayland
+- `gui-libs/gtk`: wayland
+- `media-libs/mesa`: wayland
+- `dev-python/pycairo`: X
+- `app-text/xmlto`: text
+- `dev-qt/qtbase`: opengl wayland
+- `x11-libs/libxkbcommon`: X
+- `dev-qt/qttools`: opengl
+
 ### NixOS (Not supported by Dank Linux, but with Flake)
 
 NixOS users should use the [dms flake](https://github.com/AvengeMedia/DankMaterialShell/tree/master?tab=readme-ov-file#nixos---via-home-manager)
