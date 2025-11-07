@@ -212,6 +212,7 @@ func (g *GentooDistribution) getNiriMapping(variant deps.PackageVariant) Package
 
 func (g *GentooDistribution) getPrerequisites() []string {
 	return []string{
+		"app-eselect/eselect-repository",
 		"dev-vcs/git",
 		"dev-build/make",
 		"app-arch/unzip",
@@ -472,16 +473,35 @@ func (g *GentooDistribution) setPackageUseFlags(ctx context.Context, packageName
 }
 
 func (g *GentooDistribution) syncGURURepo(ctx context.Context, progressChan chan<- InstallProgressMsg) error {
-	g.log("Syncing GURU repository...")
+	checkCmd := exec.CommandContext(ctx, "eselect", "repository", "list", "-i")
+	output, err := checkCmd.Output()
+	if err != nil {
+		return fmt.Errorf("failed to check enabled repositories: %w", err)
+	}
 
+	if !strings.Contains(string(output), "guru") {
+		g.log("GURU repository not enabled, enabling it now...")
+		enableCmd := exec.CommandContext(ctx, "eselect", "repository", "enable", "guru")
+		enableOutput, err := enableCmd.CombinedOutput()
+		if err != nil {
+			g.logError("failed to enable GURU repo", err)
+			g.log(fmt.Sprintf("GURU enable command output: %s", string(enableOutput)))
+			return fmt.Errorf("failed to enable GURU repo: %w", err)
+		}
+		g.log(fmt.Sprintf("GURU repo enabled: %s", string(enableOutput)))
+	} else {
+		g.log("GURU repository already enabled")
+	}
+
+	g.log("Syncing GURU repository...")
 	cmd := exec.CommandContext(ctx, "emaint", "sync", "-r", "guru")
-	output, err := cmd.CombinedOutput()
+	syncOutput, err := cmd.CombinedOutput()
 	if err != nil {
 		g.logError("failed to sync GURU repo", err)
-		g.log(fmt.Sprintf("GURU sync command output: %s", string(output)))
+		g.log(fmt.Sprintf("GURU sync command output: %s", string(syncOutput)))
 		return fmt.Errorf("failed to sync GURU repo: %w", err)
 	}
-	g.log(fmt.Sprintf("GURU repo synced successfully: %s", string(output)))
+	g.log(fmt.Sprintf("GURU repo synced successfully: %s", string(syncOutput)))
 
 	return nil
 }
