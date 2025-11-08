@@ -163,7 +163,6 @@ func (g *GentooDistribution) GetPackageMappingWithVariants(wm deps.WindowManager
 	archKeyword := g.getArchKeyword()
 	packages := map[string]PackageMapping{
 		"git":                    {Name: "dev-vcs/git", Repository: RepoTypeSystem},
-		"ghostty":                {Name: "x11-terms/ghostty", Repository: RepoTypeSystem, UseFlags: "X wayland", AcceptKeywords: archKeyword},
 		"kitty":                  {Name: "x11-terms/kitty", Repository: RepoTypeSystem, UseFlags: "X wayland"},
 		"alacritty":              {Name: "x11-terms/alacritty", Repository: RepoTypeSystem, UseFlags: "X wayland"},
 		"wl-clipboard":           {Name: "gui-apps/wl-clipboard", Repository: RepoTypeSystem},

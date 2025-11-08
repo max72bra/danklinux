@@ -62,32 +62,28 @@ const iwdAgentIntrospectXML = `
 	</interface>
 </node>`
 
-func NewIWDAgent(prompts PromptBroker) (*IWDAgent, error) {
-	c, err := dbus.ConnectSystemBus()
-	if err != nil {
-		return nil, fmt.Errorf("failed to connect to system bus: %w", err)
+func NewIWDAgent(conn *dbus.Conn, prompts PromptBroker) (*IWDAgent, error) {
+	if conn == nil {
+		return nil, fmt.Errorf("dbus connection is nil")
 	}
 
 	agent := &IWDAgent{
-		conn:    c,
+		conn:    conn,
 		objPath: dbus.ObjectPath(iwdAgentObjectPath),
 		prompts: prompts,
 	}
 
-	if err := c.Export(agent, agent.objPath, iwdAgentInterface); err != nil {
-		c.Close()
+	if err := conn.Export(agent, agent.objPath, iwdAgentInterface); err != nil {
 		return nil, fmt.Errorf("failed to export IWD agent: %w", err)
 	}
 
-	if err := c.Export(agent, agent.objPath, "org.freedesktop.DBus.Introspectable"); err != nil {
-		c.Close()
+	if err := conn.Export(agent, agent.objPath, "org.freedesktop.DBus.Introspectable"); err != nil {
 		return nil, fmt.Errorf("failed to export introspection: %w", err)
 	}
 
-	mgr := c.Object("net.connman.iwd", dbus.ObjectPath(iwdAgentManagerPath))
+	mgr := conn.Object("net.connman.iwd", dbus.ObjectPath(iwdAgentManagerPath))
 	call := mgr.Call(iwdAgentManagerIface+".RegisterAgent", 0, agent.objPath)
 	if call.Err != nil {
-		c.Close()
 		return nil, fmt.Errorf("failed to register agent with iwd: %w", call.Err)
 	}
 
@@ -98,7 +94,6 @@ func (a *IWDAgent) Close() {
 	if a.conn != nil {
 		mgr := a.conn.Object("net.connman.iwd", dbus.ObjectPath(iwdAgentManagerPath))
 		mgr.Call(iwdAgentManagerIface+".UnregisterAgent", 0, a.objPath)
-		a.conn.Close()
 	}
 }
 

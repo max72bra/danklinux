@@ -233,41 +233,43 @@ curl -fsSL https://install.danklinux.com | sh
 ### Gentoo
 
 **Special Notes:**
+- Gentoo installs are **highly variable** and user-specific, success is not guaranteed.
+  - `dankinstall` is most likely to succeed on a fresh stage3/systemd system
 - Uses Portage package manager with GURU overlay for additional packages
-- Automatically configures USE flags for all dependencies
-  - `/etc/portage/package.use/danklinux`
-- Unmasks some packages as-needed
-  - `/etc/portage/package.accept_keywords/danklinux`
-- If not using bin packages, prepare for long compilation times.
+- Automatically configures global USE flags in `/etc/portage/make.conf`
+  - Will create or append to your existing USE flags.
+- Automatically configures package-specific USE flags in `/etc/portage/package.use/danklinux`
+- Unmasks packages as-needed with architecture keywords in `/etc/portage/package.accept_keywords/danklinux`
+- Supports both `amd64` and `arm64` architectures dynamically
+- If not using bin packages, prepare for long compilation times
+- **Ghostty** is removed from the options, due to extremely long compilation time of its
 
 **Package Sources:**
 | Package | Source | Notes |
 |---------|---------|-------|
 | System packages (git, etc.) | Official repos | Via `emerge` |
-| ghostty | Official repos | With X and wayland USE flags |
 | niri | GURU overlay | With dbus and screencast USE flags |
-| hyprland | GURU/Official | Depends on variant selection |
-| quickshell | GURU overlay | Full feature set enabled |
+| hyprland | GURU/Official | Depends on variant selection, with X USE flag |
+| quickshell | GURU overlay | Always uses live ebuild (`**` keywords), full feature set |
 | matugen | GURU overlay | Color generation tool |
 | cliphist | GURU overlay | Clipboard manager |
+| hyprpicker | GURU overlay | Color picker for Hyprland |
 | xdg-desktop-portal-gtk | Official repos | With wayland and X USE flags |
+| mate-polkit | Official repos | PolicyKit authentication agent |
+| accountsservice | Official repos | User account management |
 | dgop | Manual | Built from source with Go |
 | xwayland-satellite | Manual | For niri X11 app support |
+| grimblast | Manual | For Hyprland screenshot utility |
 | DankMaterialShell | Manual | Git clone to `~/.config/quickshell/dms` |
 
-**System USE Flags Configured:**
-- `sys-apps/systemd`: policykit
-- `x11-libs/cairo`: X
-- `media-libs/libglvnd`: X
-- `media-libs/freetype`: harfbuzz
-- `x11-libs/gtk+`: wayland
-- `gui-libs/gtk`: wayland
-- `media-libs/mesa`: wayland
-- `dev-python/pycairo`: X
-- `app-text/xmlto`: text
-- `dev-qt/qtbase`: opengl wayland
-- `x11-libs/libxkbcommon`: X
-- `dev-qt/qttools`: opengl
+**Global USE Flags:**
+`wayland vulkan opengl accessibility policykit X udev alsa gdbm qml gtk qt6 jpeg webp png gif tiff brotli dbus svg`
+
+**Package-Specific USE Flags:**
+- `sys-apps/xdg-desktop-portal-gtk`: wayland X
+- `gui-wm/niri`: dbus screencast
+- `gui-wm/hyprland`: X
+- `gui-apps/quickshell`: -breakpad jemalloc sockets wayland layer-shell session-lock toplevel-management screencopy X pipewire tray mpris pam hyprland hyprland-global-shortcuts hyprland-focus-grab i3 i3-ipc bluetooth
 
 ### NixOS (Not supported by Dank Linux, but with Flake)
 

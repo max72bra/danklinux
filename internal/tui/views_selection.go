@@ -75,10 +75,25 @@ func (m Model) viewSelectTerminal() string {
 	options := []struct {
 		name        string
 		description string
-	}{
-		{"ghostty", "A fast, native terminal emulator built in Zig."},
-		{"kitty", "A feature-rich, customizable terminal emulator."},
-		{"alacritty", "A simple terminal emulator."},
+	}{}
+
+	if m.osInfo != nil && m.osInfo.Distribution.ID == "gentoo" {
+		options = []struct {
+			name        string
+			description string
+		}{
+			{"kitty", "A feature-rich, customizable terminal emulator."},
+			{"alacritty", "A simple terminal emulator."},
+		}
+	} else {
+		options = []struct {
+			name        string
+			description string
+		}{
+			{"ghostty", "A fast, native terminal emulator built in Zig."},
+			{"kitty", "A feature-rich, customizable terminal emulator."},
+			{"alacritty", "A simple terminal emulator."},
+		}
 	}
 
 	for i, option := range options {
@@ -110,17 +125,21 @@ func (m Model) viewSelectTerminal() string {
 
 func (m Model) updateSelectTerminalState(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if keyMsg, ok := msg.(tea.KeyMsg); ok {
+		maxTerminalIndex := 2
+		if m.osInfo != nil && m.osInfo.Distribution.ID == "gentoo" {
+			maxTerminalIndex = 1
+		}
+
 		switch keyMsg.String() {
 		case "up":
 			if m.selectedTerminal > 0 {
 				m.selectedTerminal--
 			}
 		case "down":
-			if m.selectedTerminal < 2 {
+			if m.selectedTerminal < maxTerminalIndex {
 				m.selectedTerminal++
 			}
 		case "enter":
-			// On NixOS, check if the selected WM is actually installed
 			if m.osInfo != nil && m.osInfo.Distribution.ID == "nixos" {
 				var wmInstalled bool
 				if m.selectedWM == 0 {
@@ -139,7 +158,6 @@ func (m Model) updateSelectTerminalState(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.isLoading = true
 			return m, tea.Batch(m.spinner.Tick, m.detectDependencies())
 		case "esc":
-			// Go back to window manager selection
 			m.state = StateSelectWindowManager
 			return m, m.listenForLogs()
 		}
@@ -199,15 +217,25 @@ func (m Model) detectDependencies() tea.Cmd {
 			wm = deps.WindowManagerHyprland // Second option is Hyprland
 		}
 
-		// Convert TUI terminal selection to deps enum
 		var terminal deps.Terminal
-		switch m.selectedTerminal {
-		case 0:
-			terminal = deps.TerminalGhostty
-		case 1:
-			terminal = deps.TerminalKitty
-		default:
-			terminal = deps.TerminalAlacritty
+		if m.osInfo != nil && m.osInfo.Distribution.ID == "gentoo" {
+			switch m.selectedTerminal {
+			case 0:
+				terminal = deps.TerminalKitty
+			case 1:
+				terminal = deps.TerminalAlacritty
+			default:
+				terminal = deps.TerminalKitty
+			}
+		} else {
+			switch m.selectedTerminal {
+			case 0:
+				terminal = deps.TerminalGhostty
+			case 1:
+				terminal = deps.TerminalKitty
+			default:
+				terminal = deps.TerminalAlacritty
+			}
 		}
 
 		dependencies, err := detector.DetectDependenciesWithTerminal(context.Background(), wm, terminal)

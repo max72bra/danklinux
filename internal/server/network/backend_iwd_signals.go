@@ -11,7 +11,7 @@ func (b *IWDBackend) StartMonitoring(onStateChange func()) error {
 	b.onStateChange = onStateChange
 
 	if b.promptBroker != nil {
-		agent, err := NewIWDAgent(b.promptBroker)
+		agent, err := NewIWDAgent(b.conn, b.promptBroker)
 		if err != nil {
 			return fmt.Errorf("failed to start IWD agent: %w", err)
 		}
