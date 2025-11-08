@@ -50,43 +50,6 @@ func runDetachedRestart(targetPIDStr string) {
 	runShellDaemon(false)
 }
 
-func locateDMSConfig() (string, error) {
-	var searchPaths []string
-
-	configHome := os.Getenv("XDG_CONFIG_HOME")
-	if configHome == "" {
-		if homeDir, err := os.UserHomeDir(); err == nil {
-			configHome = filepath.Join(homeDir, ".config")
-		}
-	}
-
-	if configHome != "" {
-		searchPaths = append(searchPaths, filepath.Join(configHome, "quickshell", "dms"))
-	}
-
-	searchPaths = append(searchPaths, "/usr/share/quickshell/dms")
-
-	configDirs := os.Getenv("XDG_CONFIG_DIRS")
-	if configDirs == "" {
-		configDirs = "/etc/xdg"
-	}
-
-	for _, dir := range strings.Split(configDirs, ":") {
-		if dir != "" {
-			searchPaths = append(searchPaths, filepath.Join(dir, "quickshell", "dms"))
-		}
-	}
-
-	for _, path := range searchPaths {
-		shellPath := filepath.Join(path, "shell.qml")
-		if info, err := os.Stat(shellPath); err == nil && !info.IsDir() {
-			return path, nil
-		}
-	}
-
-	return "", fmt.Errorf("could not find DMS config (shell.qml) in any valid config path")
-}
-
 func getRuntimeDir() string {
 	if runtime := os.Getenv("XDG_RUNTIME_DIR"); runtime != "" {
 		return runtime
@@ -175,6 +138,12 @@ func runShellInteractive(session bool) {
 
 	socketPath := server.GetSocketPath()
 
+	configStateFile := filepath.Join(getRuntimeDir(), "danklinux.path")
+	if err := os.WriteFile(configStateFile, []byte(configPath), 0644); err != nil {
+		log.Warnf("Failed to write config state file: %v", err)
+	}
+	defer os.Remove(configStateFile)
+
 	errChan := make(chan error, 2)
 
 	go func() {
@@ -182,11 +151,6 @@ func runShellInteractive(session bool) {
 			errChan <- fmt.Errorf("server error: %w", err)
 		}
 	}()
-
-	configPath, err := locateDMSConfig()
-	if err != nil {
-		log.Fatalf("Error locating DMS config: %v", err)
-	}
 
 	log.Infof("Spawning quickshell with -p %s", configPath)
 
@@ -385,6 +349,12 @@ func runShellDaemon(session bool) {
 
 	socketPath := server.GetSocketPath()
 
+	configStateFile := filepath.Join(getRuntimeDir(), "danklinux.path")
+	if err := os.WriteFile(configStateFile, []byte(configPath), 0644); err != nil {
+		log.Warnf("Failed to write config state file: %v", err)
+	}
+	defer os.Remove(configStateFile)
+
 	errChan := make(chan error, 2)
 
 	go func() {
@@ -392,11 +362,6 @@ func runShellDaemon(session bool) {
 			errChan <- fmt.Errorf("server error: %w", err)
 		}
 	}()
-
-	configPath, err := locateDMSConfig()
-	if err != nil {
-		log.Fatalf("Error locating DMS config: %v", err)
-	}
 
 	log.Infof("Spawning quickshell with -p %s", configPath)
 
@@ -481,11 +446,6 @@ func runShellIPCCommand(args []string) {
 
 	if args[0] != "call" {
 		args = append([]string{"call"}, args...)
-	}
-
-	configPath, err := locateDMSConfig()
-	if err != nil {
-		log.Fatalf("Error locating DMS config: %v", err)
 	}
 
 	cmdArgs := append([]string{"-p", configPath, "ipc"}, args...)
