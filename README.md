@@ -133,7 +133,7 @@ curl -fsSL https://install.danklinux.com | sh
 | System packages (git, jq, etc.) | Official repos | Via `pacman` |
 | quickshell | AUR | Built from source |
 | matugen | AUR (`matugen-bin`) | Pre-compiled binary |
-| dgop | AUR | Built from source |
+| dgop | Official repos | Available in Extra repository |
 | niri | Official repos (`niri`) | Latest niri |
 | hyprland | Official repos | Available in Extra repository |
 | DankMaterialShell | Manual | Git clone to `~/.config/quickshell/dms` |

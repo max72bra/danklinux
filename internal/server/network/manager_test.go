@@ -40,16 +40,13 @@ func TestManager_NotifySubscribers(t *testing.T) {
 	manager.notifierWg.Add(1)
 	go manager.notifier()
 
-	// Subscribe a client
 	ch := make(chan NetworkState, 10)
 	manager.subMutex.Lock()
 	manager.subscribers["test-client"] = ch
 	manager.subMutex.Unlock()
 
-	// Notify subscribers
 	manager.notifySubscribers()
 
-	// Check that state was sent (wait for debounce timer + some slack)
 	select {
 	case state := <-ch:
 		assert.Equal(t, StatusWiFi, state.NetworkStatus)
@@ -75,18 +72,15 @@ func TestManager_NotifySubscribers_Debounce(t *testing.T) {
 	manager.notifierWg.Add(1)
 	go manager.notifier()
 
-	// Subscribe a client
 	ch := make(chan NetworkState, 10)
 	manager.subMutex.Lock()
 	manager.subscribers["test-client"] = ch
 	manager.subMutex.Unlock()
 
-	// Send multiple rapid notifications
 	manager.notifySubscribers()
 	manager.notifySubscribers()
 	manager.notifySubscribers()
 
-	// Should only receive one state update due to debouncing
 	receivedCount := 0
 	timeout := time.After(200 * time.Millisecond)
 	for {
@@ -111,7 +105,6 @@ func TestManager_Close(t *testing.T) {
 		stopChan:    make(chan struct{}),
 	}
 
-	// Add subscribers
 	ch1 := make(chan NetworkState, 1)
 	ch2 := make(chan NetworkState, 1)
 	manager.subMutex.Lock()
@@ -119,24 +112,19 @@ func TestManager_Close(t *testing.T) {
 	manager.subscribers["client2"] = ch2
 	manager.subMutex.Unlock()
 
-	// Close manager
 	manager.Close()
 
-	// Check that stopChan is closed
 	select {
 	case <-manager.stopChan:
-		// Expected
 	case <-time.After(100 * time.Millisecond):
 		t.Fatal("stopChan not closed")
 	}
 
-	// Check that subscriber channels are closed
 	_, ok1 := <-ch1
 	_, ok2 := <-ch2
 	assert.False(t, ok1, "ch1 should be closed")
 	assert.False(t, ok2, "ch2 should be closed")
 
-	// Check that subscribers map is reset
 	assert.Len(t, manager.subscribers, 0)
 }
 
@@ -164,17 +152,13 @@ func TestManager_Unsubscribe(t *testing.T) {
 		subMutex:    sync.RWMutex{},
 	}
 
-	// Subscribe first
 	ch := manager.Subscribe("test-client")
 
-	// Unsubscribe
 	manager.Unsubscribe("test-client")
 
-	// Check channel is closed
 	_, ok := <-ch
 	assert.False(t, ok)
 
-	// Check client is removed
 	manager.subMutex.RLock()
 	_, exists := manager.subscribers["test-client"]
 	manager.subMutex.RUnlock()
@@ -182,12 +166,9 @@ func TestManager_Unsubscribe(t *testing.T) {
 }
 
 func TestNewManager(t *testing.T) {
-	// This test will fail in environments without NetworkManager D-Bus
-	// It's primarily for local testing
 	t.Run("attempts to create manager", func(t *testing.T) {
 		manager, err := NewManager()
 		if err != nil {
-			// Expected in test environments
 			assert.Nil(t, manager)
 		} else {
 			assert.NotNil(t, manager)
@@ -195,7 +176,6 @@ func TestNewManager(t *testing.T) {
 			assert.NotNil(t, manager.subscribers)
 			assert.NotNil(t, manager.stopChan)
 
-			// Clean up
 			manager.Close()
 		}
 	})
@@ -210,7 +190,6 @@ func TestManager_GetState_ThreadSafe(t *testing.T) {
 		stateMutex: sync.RWMutex{},
 	}
 
-	// Test concurrent reads
 	done := make(chan bool)
 	for i := 0; i < 10; i++ {
 		go func() {
@@ -220,7 +199,6 @@ func TestManager_GetState_ThreadSafe(t *testing.T) {
 		}()
 	}
 
-	// Wait for all goroutines to complete
 	for i := 0; i < 10; i++ {
 		select {
 		case <-done:

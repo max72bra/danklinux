@@ -112,7 +112,6 @@ func TestClassFiltering(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Test the class filtering logic directly
 			classHigh := tt.class & 0xFFFF0000
 			ignorable := (classHigh != 0x030000 && classHigh != 0x0A0000)
 			if ignorable != tt.want {

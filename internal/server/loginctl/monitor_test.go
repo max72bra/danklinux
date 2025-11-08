@@ -121,7 +121,6 @@ func TestManager_HandleDBusSignal_PrepareForSleep(t *testing.T) {
 
 		manager.handleDBusSignal(sig)
 
-		// State should remain unchanged
 		manager.stateMutex.RLock()
 		defer manager.stateMutex.RUnlock()
 		assert.False(t, manager.state.PreparingForSleep)
@@ -266,7 +265,6 @@ func TestManager_HandlePropertiesChanged(t *testing.T) {
 
 		manager.handlePropertiesChanged(sig)
 
-		// State should remain unchanged
 		manager.stateMutex.RLock()
 		defer manager.stateMutex.RUnlock()
 		assert.False(t, manager.state.Active)
@@ -286,7 +284,6 @@ func TestManager_HandlePropertiesChanged(t *testing.T) {
 			Body: []interface{}{},
 		}
 
-		// Should not panic
 		assert.NotPanics(t, func() {
 			manager.handlePropertiesChanged(sig)
 		})

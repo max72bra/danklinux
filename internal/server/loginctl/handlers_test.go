@@ -461,7 +461,6 @@ func TestHandleRequest(t *testing.T) {
 }
 
 func TestHandleSubscribe(t *testing.T) {
-	// Subscription requires long-running connection - just test initial response
 	manager := &Manager{
 		state: &SessionState{
 			SessionID: "1",
@@ -476,19 +475,15 @@ func TestHandleSubscribe(t *testing.T) {
 	req := Request{ID: 123, Method: "loginctl.subscribe"}
 
 	done := make(chan bool)
-	// Run handleSubscribe in goroutine since it blocks
 	go func() {
 		handleSubscribe(conn, req, manager)
 		done <- true
 	}()
 
-	// Give it a moment to send initial state
 	time.Sleep(50 * time.Millisecond)
 
-	// Close connection to stop the subscription
 	conn.Close()
 
-	// Try to decode the initial response
 	if conn.writeBuf.Len() > 0 {
 		var resp models.Response[SessionEvent]
 		err := json.NewDecoder(conn.writeBuf).Decode(&resp)
@@ -500,7 +495,6 @@ func TestHandleSubscribe(t *testing.T) {
 		}
 	}
 
-	// Wait for goroutine to finish or timeout
 	select {
 	case <-done:
 	case <-time.After(100 * time.Millisecond):

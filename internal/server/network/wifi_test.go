@@ -69,11 +69,8 @@ func TestSortWiFiNetworks(t *testing.T) {
 
 		sortWiFiNetworks(networks)
 
-		// The sorting gives priority to open networks with good signal (>= 50)
-		// OpenStrong (60 signal, open) should come before SecureWeak (40 signal, secured)
 		assert.Equal(t, "OpenStrong", networks[0].SSID)
 
-		// Verify open network comes before weak secure network
 		openIdx := -1
 		weakSecureIdx := -1
 		for i, n := range networks {
@@ -120,7 +117,6 @@ func TestManager_GetWiFiNetworks(t *testing.T) {
 	assert.Equal(t, "Network1", networks[0].SSID)
 	assert.Equal(t, "Network2", networks[1].SSID)
 
-	// Verify it's a copy, not the original
 	networks[0].SSID = "Modified"
 	assert.Equal(t, "Network1", manager.state.WiFiNetworks[0].SSID)
 }

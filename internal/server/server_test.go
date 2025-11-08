@@ -162,23 +162,19 @@ func TestCleanupStaleSockets(t *testing.T) {
 	tempDir := t.TempDir()
 	t.Setenv("XDG_RUNTIME_DIR", tempDir)
 
-	// Create a socket file with a non-existent PID
 	staleSocket := filepath.Join(tempDir, "danklinux-999999.sock")
 	err := os.WriteFile(staleSocket, []byte{}, 0600)
 	require.NoError(t, err)
 
-	// Create a socket file with current PID (should not be deleted)
 	activeSocket := filepath.Join(tempDir, fmt.Sprintf("danklinux-%d.sock", os.Getpid()))
 	err = os.WriteFile(activeSocket, []byte{}, 0600)
 	require.NoError(t, err)
 
 	cleanupStaleSockets()
 
-	// Stale socket should be removed
 	_, err = os.Stat(staleSocket)
 	assert.True(t, os.IsNotExist(err))
 
-	// Active socket should still exist
 	_, err = os.Stat(activeSocket)
 	assert.NoError(t, err)
 }

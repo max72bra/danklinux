@@ -192,24 +192,20 @@ layout {
 				assert.Contains(t, result, want, "merged config should contain: %s", want)
 			}
 
-			// Verify the example output was removed
 			assert.NotContains(t, result, `/-output "eDP-2"`, "example output should be removed")
 		})
 	}
 }
 
 func TestConfigDeploymentFlow(t *testing.T) {
-	// Create a temporary directory for testing
 	tempDir, err := os.MkdirTemp("", "dankinstall-test")
 	require.NoError(t, err)
 	defer os.RemoveAll(tempDir)
 
-	// Set up test environment
 	originalHome := os.Getenv("HOME")
 	os.Setenv("HOME", tempDir)
 	defer os.Setenv("HOME", originalHome)
 
-	// Test data
 	logChan := make(chan string, 100)
 	cd := NewConfigDeployer(logChan)
 
@@ -272,7 +268,6 @@ func TestConfigDeploymentFlow(t *testing.T) {
 	})
 }
 
-// Helper function to get Ghostty config path for testing
 func getGhosttyPath() string {
 	return filepath.Join(os.Getenv("HOME"), ".config", "ghostty", "config")
 }
@@ -417,12 +412,10 @@ input {
 }
 
 func TestHyprlandConfigDeployment(t *testing.T) {
-	// Create a temporary directory for testing
 	tempDir, err := os.MkdirTemp("", "dankinstall-hyprland-test")
 	require.NoError(t, err)
 	defer os.RemoveAll(tempDir)
 
-	// Set up test environment
 	originalHome := os.Getenv("HOME")
 	os.Setenv("HOME", tempDir)
 	defer os.Setenv("HOME", originalHome)
@@ -436,19 +429,17 @@ func TestHyprlandConfigDeployment(t *testing.T) {
 
 		assert.Equal(t, "Hyprland", result.ConfigType)
 		assert.True(t, result.Deployed)
-		assert.Empty(t, result.BackupPath) // No existing config, so no backup
+		assert.Empty(t, result.BackupPath)
 		assert.FileExists(t, result.Path)
 
-		// Verify content
 		content, err := os.ReadFile(result.Path)
 		require.NoError(t, err)
 		assert.Contains(t, string(content), "# MONITOR CONFIG")
-		assert.Contains(t, string(content), "bind = $mod, T, exec, ghostty") // Terminal injection
-		assert.Contains(t, string(content), "exec-once = ")                  // Polkit agent
+		assert.Contains(t, string(content), "bind = $mod, T, exec, ghostty")
+		assert.Contains(t, string(content), "exec-once = ")
 	})
 
 	t.Run("deploy hyprland config with existing monitors", func(t *testing.T) {
-		// Create existing config with monitors
 		existingContent := `# My existing Hyprland config
 monitor = DP-1, 1920x1080@144, 0x0, 1
 monitor = HDMI-A-1, 3840x2160@60, 1920x0, 1.5
@@ -468,27 +459,24 @@ general {
 
 		assert.Equal(t, "Hyprland", result.ConfigType)
 		assert.True(t, result.Deployed)
-		assert.NotEmpty(t, result.BackupPath) // Should have backup
+		assert.NotEmpty(t, result.BackupPath)
 		assert.FileExists(t, result.Path)
 		assert.FileExists(t, result.BackupPath)
 
-		// Verify backup content
 		backupContent, err := os.ReadFile(result.BackupPath)
 		require.NoError(t, err)
 		assert.Equal(t, existingContent, string(backupContent))
 
-		// Verify new content preserves monitors
 		newContent, err := os.ReadFile(result.Path)
 		require.NoError(t, err)
 		assert.Contains(t, string(newContent), "monitor = DP-1, 1920x1080@144")
 		assert.Contains(t, string(newContent), "monitor = HDMI-A-1, 3840x2160@60")
-		assert.Contains(t, string(newContent), "bind = $mod, T, exec, kitty") // Kitty terminal
-		assert.NotContains(t, string(newContent), "monitor = eDP-2")          // Example monitor removed
+		assert.Contains(t, string(newContent), "bind = $mod, T, exec, kitty")
+		assert.NotContains(t, string(newContent), "monitor = eDP-2")
 	})
 }
 
 func TestNiriConfigStructure(t *testing.T) {
-	// Verify the embedded Niri config has expected sections
 	assert.Contains(t, NiriConfig, "input {")
 	assert.Contains(t, NiriConfig, "layout {")
 	assert.Contains(t, NiriConfig, "binds {")
@@ -497,7 +485,6 @@ func TestNiriConfigStructure(t *testing.T) {
 }
 
 func TestHyprlandConfigStructure(t *testing.T) {
-	// Verify the embedded Hyprland config has expected sections and placeholders
 	assert.Contains(t, HyprlandConfig, "# MONITOR CONFIG")
 	assert.Contains(t, HyprlandConfig, "# ENVIRONMENT VARS")
 	assert.Contains(t, HyprlandConfig, "# STARTUP APPS")

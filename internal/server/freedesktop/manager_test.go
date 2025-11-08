@@ -50,7 +50,6 @@ func TestManager_GetState_ThreadSafe(t *testing.T) {
 		stateMutex: sync.RWMutex{},
 	}
 
-	// Test concurrent reads
 	done := make(chan bool)
 	for i := 0; i < 10; i++ {
 		go func() {
@@ -61,7 +60,6 @@ func TestManager_GetState_ThreadSafe(t *testing.T) {
 		}()
 	}
 
-	// Wait for all goroutines to complete
 	for i := 0; i < 10; i++ {
 		<-done
 	}
@@ -71,30 +69,25 @@ func TestManager_Close(t *testing.T) {
 	manager := &Manager{
 		state:       &FreedeskState{},
 		stateMutex:  sync.RWMutex{},
-		systemConn:  nil, // Would be set in real scenario
+		systemConn:  nil,
 		sessionConn: nil,
 	}
 
-	// Should not panic even with nil connections
 	assert.NotPanics(t, func() {
 		manager.Close()
 	})
 }
 
 func TestNewManager(t *testing.T) {
-	// This test will fail in environments without freedesktop D-Bus services
-	// It's primarily for local testing with proper desktop environment
 	t.Run("attempts to create manager", func(t *testing.T) {
 		manager, err := NewManager()
 		if err != nil {
-			// Expected in test environments without freedesktop services
 			assert.Nil(t, manager)
 		} else {
 			assert.NotNil(t, manager)
 			assert.NotNil(t, manager.state)
 			assert.NotNil(t, manager.systemConn)
 
-			// Clean up
 			manager.Close()
 		}
 	})
@@ -124,11 +117,9 @@ func TestManager_AccountsState_Modification(t *testing.T) {
 		stateMutex: sync.RWMutex{},
 	}
 
-	// Get state and modify it
 	state := manager.GetState()
 	state.Accounts.UserName = "modifieduser"
 
-	// Original state should remain unchanged (copy semantics)
 	original := manager.GetState()
 	assert.Equal(t, "testuser", original.Accounts.UserName)
 }
@@ -144,11 +135,9 @@ func TestManager_SettingsState_Modification(t *testing.T) {
 		stateMutex: sync.RWMutex{},
 	}
 
-	// Get state and modify it
 	state := manager.GetState()
 	state.Settings.ColorScheme = 1
 
-	// Original state should remain unchanged (copy semantics)
 	original := manager.GetState()
 	assert.Equal(t, uint32(0), original.Settings.ColorScheme)
 }
